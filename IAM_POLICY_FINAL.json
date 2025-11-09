@@ -1,0 +1,36 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "CognitoPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "cognito-identity:GetId",
+                "cognito-identity:GetCredentialsForIdentity"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "IoTConnection",
+            "Effect": "Allow",
+            "Action": [
+                "iot:Connect"
+            ],
+            "Resource": [
+                "arn:aws:iot:us-east-1:487902005635:client/*"
+            ]
+        },
+        {
+            "Sid": "IoTTopicAccess",
+            "Effect": "Allow",
+            "Action": [
+                "iot:Subscribe",
+                "iot:Receive"
+            ],
+            "Resource": [
+                "arn:aws:iot:us-east-1:487902005635:topic/sws-data",
+                "arn:aws:iot:us-east-1:487902005635:topicfilter/sws-data"
+            ]
+        }
+    ]
+}

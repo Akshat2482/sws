@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "IoTConnect",
+      "Effect": "Allow",
+      "Action": "iot:Connect",
+      "Resource": "arn:aws:iot:us-east-1:487902005635:client/*"
+    },
+    {
+      "Sid": "IoTSubscribe",
+      "Effect": "Allow",
+      "Action": "iot:Subscribe",
+      "Resource": "arn:aws:iot:us-east-1:487902005635:topicfilter/sws-data"
+    },
+    {
+      "Sid": "IoTReceive",
+      "Effect": "Allow",
+      "Action": "iot:Receive",
+      "Resource": "arn:aws:iot:us-east-1:487902005635:topic/sws-data"
+    }
+  ]
+}

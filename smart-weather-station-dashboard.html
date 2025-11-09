@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Weather Station - IAM Dashboard</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- AWS SDK v2 -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1544.0.min.js"></script>
+
+    <!-- MQTT.js -->
+    <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+
+    <!-- Material Symbols -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+
+    <style>
+        :root {
+            --bg-primary: #000000;
+            --border-color: #00ffff;
+            --text-primary: #ffffff;
+            --text-secondary: #aaaaaa;
+            --card-bg: rgba(0, 20, 40, 0.6);
+            --success: #00c853;
+            --error: #d50000;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background:
+                linear-gradient(rgba(10, 25, 47, 0.85), rgba(0, 0, 0, 0.95)),
+                url('https://images.unsplash.com/photo-1534088568595-a066f410bcda?w=1920&q=80') center/cover fixed;
+            color: var(--text-primary);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(0, 170, 255, 0.03) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 24px 32px;
+            border: 2px solid var(--border-color);
+            background: var(--card-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 16px;
+            box-shadow:
+                0 8px 32px rgba(0, 255, 255, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            animation: fadeInDown 0.6s ease-out;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--border-color), #00aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--error);
+            animation: pulse 2s infinite;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        .status-dot.connected {
+            background: var(--success);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.95); }
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .dashboard-grid .card {
+            animation: fadeInUp 0.6s ease-out backwards;
+        }
+
+        .dashboard-grid .card:nth-child(1) { animation-delay: 0.1s; }
+        .dashboard-grid .card:nth-child(2) { animation-delay: 0.2s; }
+        .dashboard-grid .card:nth-child(3) { animation-delay: 0.3s; }
+        .dashboard-grid .card:nth-child(4) { animation-delay: 0.4s; }
+        .dashboard-grid .card:nth-child(5) { animation-delay: 0.5s; }
+        .dashboard-grid .card:nth-child(6) { animation-delay: 0.6s; }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(15px) saturate(180%);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow:
+                0 8px 32px rgba(0, 255, 255, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow:
+                0 20px 60px rgba(0, 255, 255, 0.25),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-color: #00aaff;
+        }
+
+        .card:hover::before {
+            left: 100%;
+        }
+
+        .card h2 {
+            font-size: 1.3rem;
+            margin-bottom: 16px;
+            font-weight: 500;
+            color: var(--border-color);
+        }
+
+        .value-display {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 12px 0;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .material-symbols-outlined {
+            font-size: 64px;
+            line-height: 1;
+            color: var(--border-color);
+            filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.5));
+            animation: iconGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes iconGlow {
+            0%, 100% {
+                filter: drop-shadow(0 0 15px rgba(0, 255, 255, 0.4));
+            }
+            50% {
+                filter: drop-shadow(0 0 25px rgba(0, 255, 255, 0.7));
+            }
+        }
+
+        .chart-card {
+            grid-column: span 2;
+            min-height: 300px;
+        }
+
+        .last-update {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 12px;
+            font-style: italic;
+        }
+
+        .time-card {
+            grid-column: span 2;
+        }
+
+        #time {
+            font-size: 3.5rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, var(--border-color), #00aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 12px 0;
+        }
+
+        #date {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+        }
+
+        .status-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 12px 0;
+        }
+
+        .raw-value {
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .loading {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            .chart-card, .time-card {
+                grid-column: span 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🌤️ Smart Weather Station (IAM)</h1>
+        <div class="connection-status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="connectionText">Not Connected</span>
+        </div>
+    </div>
+
+
+    <div class="dashboard-grid">
+        <div class="card">
+            <h2>💧 Humidity</h2>
+            <div class="value-display">
+                <div id="humidity-icon"></div>
+                <div id="humidity-level" class="loading">--</div>
+            </div>
+            <div class="last-update" id="humidity-time">Waiting for data...</div>
+        </div>
+
+        <div class="card">
+            <h2>🌡️ Temperature</h2>
+            <div class="value-display">
+                <div id="temperature-icon"></div>
+                <div id="current-temp" class="loading">--</div>
+            </div>
+            <div class="last-update" id="temp-time">Waiting for data...</div>
+        </div>
+
+        <div class="card">
+            <h2>💨 Air Quality</h2>
+            <div id="co2-icon"></div>
+            <p id="air-quality-status" class="status-value loading">--</p>
+            <p id="air-quality-value" class="raw-value">Raw: --</p>
+            <div class="last-update" id="air-time">Waiting for data...</div>
+        </div>
+
+        <div class="card">
+            <h2>💡 Light Level</h2>
+            <div id="light-icon"></div>
+            <p id="light-status" class="status-value loading">--</p>
+            <p id="light-value" class="raw-value">Raw: --</p>
+            <div class="last-update" id="light-time">Waiting for data...</div>
+        </div>
+
+        <div class="card chart-card">
+            <h2>📊 Air Quality Trend</h2>
+            <canvas id="historyChart"></canvas>
+        </div>
+
+        <div class="card time-card">
+            <h2>🕐 Current Time</h2>
+            <div id="time"></div>
+            <div id="date"></div>
+        </div>
+    </div>
+
+    <script>
+        // AWS Configuration - Hardcoded for student project
+        const AWS_CONFIG = {
+            region: 'us-east-1',
+            iotEndpoint: 'a2jxq81rsqt8vu-ats.iot.us-east-1.amazonaws.com',
+            accessKeyId: 'AKIAXDGJZZGB6A554TFW',
+            secretAccessKey: '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'
+        };
+
+        const MQTT_TOPIC = 'sws-data';
+        let mqttClient = null;
+        let historicalData = [];
+        let historyChart = null;
+
+        async function connectToIoT() {
+            console.log('🔌 Connecting to AWS IoT...');
+            updateConnectionStatus(false, 'Connecting...');
+
+            try {
+                // Configure AWS SDK with IAM credentials
+                AWS.config.region = AWS_CONFIG.region;
+                AWS.config.credentials = new AWS.Credentials({
+                    accessKeyId: AWS_CONFIG.accessKeyId,
+                    secretAccessKey: AWS_CONFIG.secretAccessKey
+                });
+
+                console.log('✅ AWS SDK configured with IAM credentials');
+
+                // Create signed WebSocket URL
+                const signedUrl = await createSignedWebSocketUrl(AWS_CONFIG.iotEndpoint, AWS_CONFIG.region, {
+                    accessKeyId: AWS_CONFIG.accessKeyId,
+                    secretAccessKey: AWS_CONFIG.secretAccessKey
+                });
+
+                console.log('✅ Signed WebSocket URL created');
+
+                // Connect via MQTT
+                mqttClient = mqtt.connect(signedUrl, {
+                    clientId: 'browser_iam_' + Math.random().toString(16).substring(2, 10),
+                    protocol: 'wss',
+                    reconnectPeriod: 5000
+                });
+
+                mqttClient.on('connect', () => {
+                    console.log('✅✅✅ Connected to AWS IoT Core successfully!');
+                    updateConnectionStatus(true, 'Connected');
+
+                    mqttClient.subscribe(MQTT_TOPIC, (err) => {
+                        if (err) {
+                            console.error('❌ Subscribe failed:', err);
+                        } else {
+                            console.log(`📡 Subscribed to: ${MQTT_TOPIC}`);
+                        }
+                    });
+                });
+
+                mqttClient.on('message', (topic, message) => {
+                    console.log('📨 Message received:', message.toString());
+                    try {
+                        const data = JSON.parse(message.toString());
+                        handleSensorData(data);
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
+                    }
+                });
+
+                mqttClient.on('error', (error) => {
+                    console.error('❌ MQTT Error:', error);
+                    updateConnectionStatus(false, 'Error');
+                });
+
+                mqttClient.on('close', () => {
+                    console.log('⚠️ Connection closed');
+                    updateConnectionStatus(false, 'Disconnected');
+                });
+
+                mqttClient.on('reconnect', () => {
+                    console.log('🔄 Reconnecting...');
+                    updateConnectionStatus(false, 'Reconnecting...');
+                });
+
+            } catch (error) {
+                console.error('❌ Connection failed:', error);
+                alert('Connection failed: ' + error.message);
+                updateConnectionStatus(false, 'Failed');
+            }
+        }
+
+        // SigV4 Signing
+        async function createSignedWebSocketUrl(endpoint, region, credentials) {
+            const url = `wss://${endpoint}/mqtt`;
+            const now = new Date();
+            const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').substring(0, 8);
+            const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+
+            const service = 'iotdevicegateway';
+            const algorithm = 'AWS4-HMAC-SHA256';
+            const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+
+            const queryParams = {
+                'X-Amz-Algorithm': algorithm,
+                'X-Amz-Credential': `${credentials.accessKeyId}/${credentialScope}`,
+                'X-Amz-Date': amzDate,
+                'X-Amz-SignedHeaders': 'host'
+            };
+
+            const sortedQueryString = Object.keys(queryParams)
+                .sort()
+                .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
+                .join('&');
+
+            const canonicalUri = '/mqtt';
+            const canonicalHeaders = `host:${endpoint}\n`;
+            const signedHeaders = 'host';
+            const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+            const canonicalRequest = [
+                'GET',
+                canonicalUri,
+                sortedQueryString,
+                canonicalHeaders,
+                signedHeaders,
+                payloadHash
+            ].join('\n');
+
+            const canonicalRequestHash = await sha256(canonicalRequest);
+            const stringToSign = [
+                algorithm,
+                amzDate,
+                credentialScope,
+                canonicalRequestHash
+            ].join('\n');
+
+            const signature = await calculateSignature(credentials.secretAccessKey, dateStamp, region, service, stringToSign);
+
+            return `${url}?${sortedQueryString}&X-Amz-Signature=${signature}`;
+        }
+
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function calculateSignature(secretKey, dateStamp, region, service, stringToSign) {
+            const kDate = await hmac('AWS4' + secretKey, dateStamp);
+            const kRegion = await hmac(kDate, region);
+            const kService = await hmac(kRegion, service);
+            const kSigning = await hmac(kService, 'aws4_request');
+            const signature = await hmac(kSigning, stringToSign);
+            return arrayBufferToHex(signature);
+        }
+
+        async function hmac(key, message) {
+            const keyBuffer = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+            const msgBuffer = new TextEncoder().encode(message);
+            const cryptoKey = await crypto.subtle.importKey(
+                'raw',
+                keyBuffer,
+                { name: 'HMAC', hash: 'SHA-256' },
+                false,
+                ['sign']
+            );
+            return await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
+        }
+
+        function arrayBufferToHex(buffer) {
+            return Array.from(new Uint8Array(buffer))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+        }
+
+        // Handle sensor data
+        function handleSensorData(data) {
+            document.querySelectorAll('.loading').forEach(el => el.classList.remove('loading'));
+
+            if (data.tempF !== undefined) {
+                document.getElementById('current-temp').textContent = `${data.tempF}°F`;
+                updateTemperatureIcon(data.tempF);
+                document.getElementById('temp-time').textContent = formatUpdateTime();
+            }
+
+            if (data.hum !== undefined) {
+                document.getElementById('humidity-level').textContent = `${data.hum}%`;
+                updateHumidityIcon(data.hum);
+                document.getElementById('humidity-time').textContent = formatUpdateTime();
+            }
+
+            if (data.air !== undefined) {
+                const status = data.airStatus || classifyAirQuality(data.air);
+                document.getElementById('air-quality-status').textContent = status;
+                document.getElementById('air-quality-value').textContent = `Raw: ${data.air}`;
+                updateCO2Icon(data.air);
+                document.getElementById('air-time').textContent = formatUpdateTime();
+
+                historicalData.push({ date: new Date(), value: data.air });
+                if (historicalData.length > 20) historicalData.shift();
+                updateHistoryChart();
+            }
+
+            if (data.light !== undefined) {
+                const status = data.lightStatus || classifyLight(data.light);
+                document.getElementById('light-status').textContent = status;
+                document.getElementById('light-value').textContent = `Raw: ${data.light}`;
+                updateLightIcon(data.light);
+                document.getElementById('light-time').textContent = formatUpdateTime();
+            }
+        }
+
+        // Helper functions
+        function updateConnectionStatus(connected, message) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('connectionText');
+
+            if (connected) {
+                dot.classList.add('connected');
+            } else {
+                dot.classList.remove('connected');
+            }
+
+            text.textContent = message;
+        }
+
+        function formatUpdateTime() {
+            return `Updated: ${new Date().toLocaleTimeString()}`;
+        }
+
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('time').textContent = now.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('date').textContent = now.toLocaleDateString([], {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        function classifyAirQuality(value) {
+            if (value < 500) return 'Good';
+            if (value < 1000) return 'Moderate';
+            return 'Poor';
+        }
+
+        function classifyLight(value) {
+            if (value < 1000) return 'Dark';
+            if (value < 2500) return 'Dim';
+            return 'Bright';
+        }
+
+        function updateHumidityIcon(humidity) {
+            const icon = document.getElementById('humidity-icon');
+            icon.innerHTML = `<span class="material-symbols-outlined">${
+                humidity < 30 ? 'humidity_low' : humidity < 60 ? 'humidity_mid' : 'humidity_high'
+            }</span>`;
+        }
+
+        function updateTemperatureIcon(tempF) {
+            const icon = document.getElementById('temperature-icon');
+            icon.innerHTML = `<span class="material-symbols-outlined">${
+                tempF < 50 ? 'ac_unit' : tempF <= 80 ? 'thermostat' : 'whatshot'
+            }</span>`;
+        }
+
+        function updateCO2Icon(value) {
+            const icon = document.getElementById('co2-icon');
+            icon.innerHTML = `<span class="material-symbols-outlined">${
+                value < 1000 ? 'air' : 'warning'
+            }</span>`;
+        }
+
+        function updateLightIcon(value) {
+            const icon = document.getElementById('light-icon');
+            icon.innerHTML = `<span class="material-symbols-outlined">${
+                value < 1000 ? 'nights_stay' : value < 2500 ? 'wb_twilight' : 'wb_sunny'
+            }</span>`;
+        }
+
+        function initializeChart() {
+            const ctx = document.getElementById('historyChart').getContext('2d');
+            historyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Air Quality',
+                        data: [],
+                        borderColor: 'rgba(0, 255, 255, 1)',
+                        backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: 'rgba(0, 255, 255, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0, 255, 255, 0.1)' },
+                            ticks: { color: '#aaa', font: { size: 11 } }
+                        },
+                        x: {
+                            grid: { color: 'rgba(0, 255, 255, 0.1)' },
+                            ticks: { color: '#aaa', font: { size: 11 }, maxRotation: 45, minRotation: 45 }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateHistoryChart() {
+            if (!historyChart) return;
+
+            const labels = historicalData.map(d =>
+                d.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            );
+            const values = historicalData.map(d => d.value);
+
+            historyChart.data.labels = labels;
+            historyChart.data.datasets[0].data = values;
+            historyChart.update('none');
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeChart();
+            updateTime();
+            setInterval(updateTime, 1000);
+
+            // Initialize placeholder icons
+            updateHumidityIcon(50);
+            updateTemperatureIcon(70);
+            updateCO2Icon(400);
+            updateLightIcon(2000);
+
+            // Auto-connect to AWS IoT
+            connectToIoT();
+        });
+    </script>
+</body>
+</html>
