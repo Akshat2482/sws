@@ -157,26 +157,35 @@ void sensors_update()
     Serial.print("  Light: ");
     Serial.println(lightStatus);
 
-    // Publish to AWS IoT (compact JSON)
-    String payload = "{";
-    payload += "\"tempF\":" + String(tempF, 1);
-    payload += ",\"hum\":" + String(humidity, 1);
-    payload += ",\"air\":" + String(airValue);
-    payload += ",\"light\":" + String(lightValue);
-    payload += ",\"airStatus\":\"" + String(airStatus) + "\"";
-    payload += ",\"lightStatus\":\"" + String(lightStatus) + "\"";
-    // Add current milliseconds as 'date'
-    payload += ",\"date\":" + String(millis());
-    payload += "}";
-
-    bool published = aws_client_publish("sws-data", payload.c_str());
-    if (published)
+    // Only publish to AWS IoT if WiFi is connected
+    // This prevents errors during BLE provisioning
+    if (WiFi.status() == WL_CONNECTED)
     {
-        Serial.println("Published sensor payload to AWS: " + payload);
+        // Publish to AWS IoT (compact JSON)
+        String payload = "{";
+        payload += "\"tempF\":" + String(tempF, 1);
+        payload += ",\"hum\":" + String(humidity, 1);
+        payload += ",\"air\":" + String(airValue);
+        payload += ",\"light\":" + String(lightValue);
+        payload += ",\"airStatus\":\"" + String(airStatus) + "\"";
+        payload += ",\"lightStatus\":\"" + String(lightStatus) + "\"";
+        // Add current milliseconds as 'date'
+        payload += ",\"date\":" + String(millis());
+        payload += "}";
+
+        bool published = aws_client_publish("sws-data", payload.c_str());
+        if (published)
+        {
+            Serial.println("Published sensor payload to AWS: " + payload);
+        }
+        else
+        {
+            Serial.println("Failed to publish sensor payload");
+        }
     }
     else
     {
-        Serial.println("Failed to publish sensor payload");
+        Serial.println("WiFi not connected - skipping sensor publish");
     }
 
     // OLED output - Display current sensor readings

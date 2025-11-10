@@ -135,15 +135,12 @@ void aws_client_init()
     configureTLSforLowMemory();
 
     // CRITICAL: Set buffer size BEFORE setServer
-    // Use 256 bytes to save maximum memory
-    mqttClient.setBufferSize(256);
-    mqttClient.setKeepAlive(90);
-    mqttClient.setSocketTimeout(45);
+    // Use 512 bytes for better reliability (was 256 - too small)
+    mqttClient.setBufferSize(512);
+    mqttClient.setKeepAlive(60);      // Reduced from 90
+    mqttClient.setSocketTimeout(30);   // Reduced from 45
 
     mqttClient.setServer(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
-    mqttClient.setBufferSize(256);
-    mqttClient.setKeepAlive(90);
-    mqttClient.setSocketTimeout(45);
 
     mqttClient.setCallback(aws_mqtt_callback);
 
@@ -485,20 +482,53 @@ bool aws_client_connect()
     Serial.print(AWS_IOT_ENDPOINT);
     Serial.print(":");
     Serial.println(AWS_IOT_PORT);
+    Serial.print("aws_client: Free heap before TLS: ");
+    Serial.println(ESP.getFreeHeap());
 
-    bool tlsConnected = secureClient.connect(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
+    // Set a reasonable timeout for low memory scenarios
+    secureClient.setTimeout(30);  // 30 seconds
+
+    // Try TLS connection with retry
+    bool tlsConnected = false;
+    for (int attempt = 1; attempt <= 3 && !tlsConnected; attempt++)
+    {
+        if (attempt > 1)
+        {
+            Serial.print("aws_client: TLS retry attempt ");
+            Serial.println(attempt);
+            delay(2000);
+        }
+
+        tlsConnected = secureClient.connect(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
+
+        if (!tlsConnected)
+        {
+            Serial.print("aws_client: TLS attempt ");
+            Serial.print(attempt);
+            Serial.println(" FAILED");
+
+            int lastError = secureClient.lastError(nullptr, 0);
+            Serial.print("aws_client: SSL error code: ");
+            Serial.println(lastError);
+
+            // Common error codes:
+            // -1 = generic error
+            // -76 = Out of memory
+            Serial.print("aws_client: Free heap: ");
+            Serial.println(ESP.getFreeHeap());
+
+            secureClient.stop();
+        }
+    }
 
     if (!tlsConnected)
     {
-        Serial.println("aws_client: TLS connection FAILED");
-        Serial.print("aws_client: secureClient.connected() = ");
-        Serial.println(secureClient.connected());
-
-        int lastError = secureClient.lastError(nullptr, 0);
-        Serial.print("aws_client: Last SSL error code: ");
-        Serial.println(lastError);
-
-        secureClient.stop();
+        Serial.println("aws_client: ❌ TLS connection FAILED after all retries");
+        Serial.println("aws_client: Possible causes:");
+        Serial.println("  1. Insufficient memory (need ~60KB free)");
+        Serial.println("  2. Incorrect certificates");
+        Serial.println("  3. Network connectivity issues");
+        Serial.println("  4. Time not synced properly");
         return false;
     }
 
