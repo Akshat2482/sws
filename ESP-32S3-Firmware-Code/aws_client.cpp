@@ -147,49 +147,8 @@ void aws_client_init()
 
     mqttClient.setCallback(aws_mqtt_callback);
 
-    if (AWS_INSECURE)
-    {
-        secureClient.setInsecure();
-        Serial.println("aws_client: ⚠️  INSECURE MODE - TLS certs not validated");
-        Serial.println("aws_client: This is OK for testing, but NOT for production!");
-    }
-    else
-    {
-        Serial.println("aws_client: SECURE MODE - validating TLS certificates");
-        // For production, load certs into secureClient via setCACert / setCertificate / setPrivateKey
-        if (sizeof(AWS_ROOT_CA) > 10)
-        {
-            secureClient.setCACert(AWS_ROOT_CA);
-            Serial.println("aws_client: Root CA loaded");
-        }
-        else
-        {
-            Serial.println("aws_client: ⚠️  WARNING: Root CA is empty!");
-        }
-
-        if (sizeof(AWS_CLIENT_CERT) > 10)
-        {
-            secureClient.setCertificate(AWS_CLIENT_CERT);
-            Serial.println("aws_client: Client certificate loaded");
-        }
-        else
-        {
-            Serial.println("aws_client: ⚠️  WARNING: Client certificate is empty!");
-        }
-
-        if (sizeof(AWS_PRIVATE_KEY) > 10)
-        {
-            secureClient.setPrivateKey(AWS_PRIVATE_KEY);
-            Serial.println("aws_client: Private key loaded");
-        }
-        else
-        {
-            Serial.println("aws_client: ⚠️  WARNING: Private key is empty!");
-        }
-    }
-
-    // Debug: print lengths to ensure PEMs are present and not truncated
-    Serial.println("aws_client: Certificate lengths:");
+    // Debug: print certificate lengths first
+    Serial.println("aws_client: Certificate sizes:");
     Serial.print("  - Root CA: ");
     Serial.print(strlen(AWS_ROOT_CA));
     Serial.println(" bytes");
@@ -199,8 +158,68 @@ void aws_client_init()
     Serial.print("  - Private key: ");
     Serial.print(strlen(AWS_PRIVATE_KEY));
     Serial.println(" bytes");
-    Serial.println("aws_client: initialization complete");
+    Serial.flush();  // Ensure output is sent
+
+    if (AWS_INSECURE)
+    {
+        Serial.println("aws_client: ⚠️  INSECURE MODE - TLS certs not validated");
+        Serial.println("aws_client: This is OK for testing, but NOT for production!");
+        secureClient.setInsecure();
+    }
+    else
+    {
+        Serial.println("aws_client: SECURE MODE - validating TLS certificates");
+        Serial.flush();
+
+        // Load certificates with delays to prevent watchdog timeouts
+        if (strlen(AWS_ROOT_CA) > 10)
+        {
+            Serial.print("aws_client: Loading Root CA...");
+            Serial.flush();
+            secureClient.setCACert(AWS_ROOT_CA);
+            delay(100);
+            yield();
+            Serial.println(" DONE");
+        }
+        else
+        {
+            Serial.println("aws_client: ⚠️  ERROR: Root CA is empty!");
+        }
+
+        if (strlen(AWS_CLIENT_CERT) > 10)
+        {
+            Serial.print("aws_client: Loading Client certificate...");
+            Serial.flush();
+            secureClient.setCertificate(AWS_CLIENT_CERT);
+            delay(100);
+            yield();
+            Serial.println(" DONE");
+        }
+        else
+        {
+            Serial.println("aws_client: ⚠️  ERROR: Client certificate is empty!");
+        }
+
+        if (strlen(AWS_PRIVATE_KEY) > 10)
+        {
+            Serial.print("aws_client: Loading Private key...");
+            Serial.flush();
+            secureClient.setPrivateKey(AWS_PRIVATE_KEY);
+            delay(100);
+            yield();
+            Serial.println(" DONE");
+        }
+        else
+        {
+            Serial.println("aws_client: ⚠️  ERROR: Private key is empty!");
+        }
+    }
+
+    Serial.println("aws_client: ✓ Initialization complete");
+    Serial.print("aws_client: Free heap after init: ");
+    Serial.println(ESP.getFreeHeap());
     Serial.println("=========================================");
+    Serial.flush();
 }
 
 // bool aws_client_connect()
@@ -402,103 +421,125 @@ void aws_client_init()
 
 bool aws_client_connect()
 {
+    // Prevent rapid reconnection attempts
+    if (mqttClient.connected())
+        return true;
+
+    unsigned long now = millis();
+    if (now - lastReconnectAttempt < 5000)
+        return false; // Wait 5 seconds between attempts
+    lastReconnectAttempt = now;
+
     Serial.println("===========================================");
-    Serial.println("Connecting to AWS IoT...");
+    Serial.println("aws_client: Attempting AWS IoT connection...");
 
     // Ensure WiFi is connected
     if (WiFi.status() != WL_CONNECTED)
     {
-        Serial.println("WiFi not connected, skipping MQTT connect");
+        Serial.println("aws_client: WiFi not connected, skipping MQTT connect");
         return false;
     }
 
-    Serial.print("Endpoint: ");
+    Serial.print("aws_client: Endpoint: ");
     Serial.println(AWS_IOT_ENDPOINT);
-
-    // Debug: print free memory before TLS
-    Serial.print("Free heap before TLS: ");
+    Serial.print("aws_client: Free heap: ");
     Serial.println(ESP.getFreeHeap());
 
     // Ensure system time is synced for TLS validation
-    auto ensureTimeSync = [](unsigned long timeoutMs = 5000) -> bool
+    Serial.println("aws_client: Checking NTP time sync...");
+    time_t now_time = time(nullptr);
+    if (now_time < 1600000000)
     {
-        time_t now = time(nullptr);
-        if (now > 1600000000)
-            return true; // Already synced
-        Serial.println("Syncing time via NTP...");
+        Serial.println("aws_client: Time not synced, syncing via NTP...");
         configTime(0, 0, "pool.ntp.org", "time.google.com");
         unsigned long start = millis();
-        while (millis() - start < timeoutMs)
+        while (millis() - start < 10000)
         {
-            now = time(nullptr);
-            if (now > 1600000000)
+            now_time = time(nullptr);
+            if (now_time > 1600000000)
             {
-                Serial.print("Time synced: ");
-                Serial.println((long)now);
-                return true;
+                Serial.print("aws_client: Time synced: ");
+                Serial.println((long)now_time);
+                break;
             }
             delay(500);
+            Serial.print(".");
         }
-        Serial.println("Time sync timeout");
-        return false;
-    };
-
-    if (!ensureTimeSync(7000))
-    {
-        Serial.println("Warning: Time not synced, TLS may fail");
-    }
-
-    // TLS Configurations: Set certificates for AWS IoT connection
-    secureClient.setCACert(AWS_ROOT_CA);
-    secureClient.setCertificate(AWS_CLIENT_CERT);
-    secureClient.setPrivateKey(AWS_PRIVATE_KEY);
-
-    Serial.println("Configured certificates for TLS.");
-
-    // Start TLS connection with retry logic
-    bool tlsConnected = false;
-    Serial.println("Starting TLS handshake...");
-    for (int attempt = 1; attempt <= 2 && !tlsConnected; attempt++)
-    {
-        if (attempt > 1)
+        if (now_time < 1600000000)
         {
-            Serial.print("Retry attempt ");
-            Serial.println(attempt);
-            delay(1000);
-        }
-        tlsConnected = secureClient.connect(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
-        if (!tlsConnected)
-        {
-            Serial.print("Attempt ");
-            Serial.print(attempt);
-            Serial.println(" failed");
+            Serial.println("\naws_client: WARNING - Time sync failed, TLS may fail");
         }
     }
+    else
+    {
+        Serial.print("aws_client: Time already synced: ");
+        Serial.println((long)now_time);
+    }
+
+    // NOTE: Certificates already set in aws_client_init()
+    // Do NOT re-set them here to avoid memory issues
+
+    // Start TLS connection
+    Serial.println("aws_client: Starting TLS handshake...");
+    Serial.print("aws_client: Connecting to ");
+    Serial.print(AWS_IOT_ENDPOINT);
+    Serial.print(":");
+    Serial.println(AWS_IOT_PORT);
+
+    bool tlsConnected = secureClient.connect(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
 
     if (!tlsConnected)
     {
-        Serial.println("TLS connection failed.");
-        Serial.print("secureClient.connected() = ");
+        Serial.println("aws_client: TLS connection FAILED");
+        Serial.print("aws_client: secureClient.connected() = ");
         Serial.println(secureClient.connected());
+
+        int lastError = secureClient.lastError(nullptr, 0);
+        Serial.print("aws_client: Last SSL error code: ");
+        Serial.println(lastError);
+
+        secureClient.stop();
         return false;
     }
 
-    Serial.println("TLS handshake successful!");
+    Serial.println("aws_client: TLS handshake SUCCESS!");
+    Serial.print("aws_client: Free heap after TLS: ");
+    Serial.println(ESP.getFreeHeap());
 
-    mqttClient.setServer(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
-    mqttClient.setCallback(aws_mqtt_callback);
+    // Now attempt MQTT connection
+    Serial.print("aws_client: Connecting MQTT with client ID: ");
+    Serial.println(MQTT_CLIENT_ID);
 
-    // Attempt to connect to MQTT
     if (mqttClient.connect(MQTT_CLIENT_ID))
     {
-        Serial.println("Connected to AWS IoT.");
+        Serial.println("aws_client: ✓ MQTT CONNECTED to AWS IoT!");
+        Serial.println("===========================================");
         return true;
     }
     else
     {
         int state = mqttClient.state();
-        Serial.print("Failed to connect to MQTT: ");
-        Serial.println(state);
+        Serial.print("aws_client: MQTT connection FAILED, state=");
+        Serial.print(state);
+        Serial.print(" (");
+
+        switch (state)
+        {
+        case -4: Serial.print("TIMEOUT"); break;
+        case -3: Serial.print("CONNECTION_LOST"); break;
+        case -2: Serial.print("CONNECT_FAILED"); break;
+        case -1: Serial.print("DISCONNECTED"); break;
+        case 1: Serial.print("BAD_PROTOCOL"); break;
+        case 2: Serial.print("BAD_CLIENT_ID"); break;
+        case 3: Serial.print("UNAVAILABLE"); break;
+        case 4: Serial.print("BAD_CREDENTIALS"); break;
+        case 5: Serial.print("UNAUTHORIZED"); break;
+        default: Serial.print("UNKNOWN"); break;
+        }
+        Serial.println(")");
+        Serial.println("===========================================");
+
+        secureClient.stop();
         return false;
     }
 }

@@ -6,10 +6,15 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "dashboard": "live-server dashboard.html --port=8080 --open",
-    "wifi-setup": "live-server wifi-setup.html --port=8080 --open"
+    "dashboard": "live-server smart-weather-station-dashboard.html --port=8080 --open",
+    "wifi-setup": "live-server wifi-setup.html --port=8081 --open"
   },
-  "keywords": ["esp32", "weather-station", "iot", "aws-iot"],
+  "keywords": [
+    "esp32",
+    "weather-station",
+    "iot",
+    "aws-iot"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {

@@ -15,3 +15,4 @@ void wifi_manager_try_autoconnect();
 void wifi_manager_handle_write(const String &ssid, const String &pass, BLECharacteristic *notifyChar);
 String wifi_manager_scan_list();
 bool wifi_manager_is_connected();
+void wifi_manager_clear_credentials();
