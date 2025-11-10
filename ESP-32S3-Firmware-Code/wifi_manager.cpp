@@ -16,6 +16,7 @@ static bool deviceConnected = false;
 // scanRequested controls one-shot scans triggered by request
 static volatile bool scanRequested = false;
 static bool scanInProgress = false;  // Track if async scan is running
+static unsigned long scanStartTime = 0;  // Track when scan started
 
 // BLE UUIDs (keep same as backup or change if needed)
 #define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
@@ -226,8 +227,14 @@ void wifi_manager_loop()
     {
         scanRequested = false;
         scanInProgress = true;
+        scanStartTime = millis();  // Record start time
+
         Serial.println("=== STARTING ASYNC WiFi SCAN ===");
         Serial.println("Starting non-blocking WiFi scan to keep BLE alive...");
+        Serial.print("BLE client connected: ");
+        Serial.println(deviceConnected ? "YES" : "NO");
+        Serial.print("Notify char available: ");
+        Serial.println(pNotifyChar != nullptr ? "YES" : "NO");
 
         // CRITICAL: Ensure WiFi is in correct mode but NOT auto-connecting
         WiFi.mode(WIFI_STA);  // Enable WiFi in station mode for scanning
@@ -237,7 +244,9 @@ void wifi_manager_loop()
         Serial.println("WiFi mode: STA (scan only, no auto-connect)");
 
         // Start ASYNC scan (non-blocking) - this returns immediately
-        WiFi.scanNetworks(true, false, false, 300);  // async=true, show_hidden=false, passive=false, max_ms_per_chan=300
+        int16_t scanResult = WiFi.scanNetworks(true, false, false, 300);  // async=true
+        Serial.print("WiFi.scanNetworks() returned: ");
+        Serial.println(scanResult);
         Serial.println("WiFi scan started in background");
     }
 
@@ -246,13 +255,32 @@ void wifi_manager_loop()
     {
         int n = WiFi.scanComplete();
 
+        // Add timeout for stuck scans (15 seconds)
+        if (millis() - scanStartTime > 15000)
+        {
+            Serial.println("⚠️  WiFi scan TIMEOUT after 15 seconds!");
+            scanInProgress = false;
+            WiFi.scanDelete();
+
+            if (deviceConnected && pNotifyChar)
+            {
+                pNotifyChar->setValue("WIFI_LIST:NONE");
+                pNotifyChar->notify();
+                Serial.println("Notified client: WIFI_LIST:NONE (timeout)");
+            }
+            return;
+        }
+
         if (n == WIFI_SCAN_RUNNING)
         {
             // Still scanning, do nothing - BLE continues to work
             static unsigned long lastPrint = 0;
             if (millis() - lastPrint > 1000)
             {
-                Serial.println("WiFi scan still running... (BLE active)");
+                unsigned long elapsed = (millis() - scanStartTime) / 1000;
+                Serial.print("WiFi scan still running... (BLE active) - ");
+                Serial.print(elapsed);
+                Serial.println(" seconds");
                 lastPrint = millis();
             }
         }
@@ -429,14 +457,31 @@ void wifi_manager_handle_write(const String &ssid, const String &pass, BLECharac
         Serial.println("wifi_manager: Shutting down BLE to free memory for AWS IoT...");
         Serial.print("wifi_manager: Free heap before BLE shutdown: ");
         Serial.println(ESP.getFreeHeap());
-        
+
+        // Aggressive BLE shutdown sequence
+        Serial.println("wifi_manager: Step 1 - Stopping advertising...");
+        BLEDevice::getAdvertising()->stop();
+        delay(200);
+
+        Serial.println("wifi_manager: Step 2 - Deinitializing BLE...");
         BLEDevice::deinit(true);  // Completely deinitialize BLE and free memory
-        delay(500);
-        
+        delay(1000);  // Increased delay to allow full cleanup
+
         Serial.print("wifi_manager: Free heap after BLE shutdown: ");
         Serial.println(ESP.getFreeHeap());
+
+        // Force memory compaction
+        Serial.println("wifi_manager: Step 3 - Forcing memory cleanup...");
+        heap_caps_check_integrity_all(true);
+        delay(500);
+
+        Serial.print("wifi_manager: Final free heap: ");
+        Serial.println(ESP.getFreeHeap());
         Serial.println("wifi_manager: BLE disabled - memory freed for AWS IoT");
-        
+
+        // Wait a bit more before AWS init to ensure stability
+        delay(500);
+
         // Initialize AWS client now that WiFi is available and BLE is freed
         aws_client_init();
     }

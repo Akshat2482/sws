@@ -8,7 +8,7 @@
 
 // ⚠️ TESTING MODE: Set to 'true' to ALWAYS clear credentials and start BLE
 // Set to 'false' for normal operation (auto-connect if credentials exist)
-#define FORCE_BLE_MODE true  // ✅ ENABLED - Will clear credentials and start BLE
+#define FORCE_BLE_MODE false  // ✅ PRODUCTION MODE - Save credentials and auto-connect
 
 void setup() {
   Serial.begin(115200);
