@@ -173,6 +173,51 @@
                 transform: rotate(360deg)
             }
         }
+
+        /* Modal styles */
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal h3 {
+            margin: 0 0 12px 0;
+            font-size: 1.25rem;
+        }
+
+        .modal p {
+            color: var(--muted);
+            line-height: 1.5;
+            margin: 0 0 20px 0;
+        }
+
+        .modal .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .modal .btn-cancel {
+            background: #e5e7eb;
+            color: #374151;
+        }
     </style>
 </head>
 
@@ -184,7 +229,7 @@
                 <div class="meta">Provision your ESP32 over BLE</div>
             </div>
             <div class="controls">
-                <button id="scanBtn" onclick="scanForDevices()">Scan All Devices</button>
+                <button id="scanBtn" onclick="scanForDevices()">Scan ESP32 Devices</button>
                 <button id="connectBtn">Connect to ESP32</button>
                 <div id="status">Not connected</div>
             </div>
@@ -225,16 +270,19 @@
             const CHAR_WRITE = '12345678-1234-1234-1234-1234567890ac'; // write to esp
 
             let device, server, service, notifyChar, writeChar;
+            let scanInProgress = false;  // Track if a scan is already happening
 
-            // Function to scan and list all available BLE devices
+            // Function to scan and list available ESP32 devices
             async function scanForDevices() {
                 try {
-                    console.log('Scanning for all available BLE devices...');
-                    
-                    // Request device with acceptAllDevices to see all devices
+                    console.log('Scanning for ESP32 devices...');
+
+                    // Request device filtering by ESP32 name prefix
                     const discoveredDevice = await navigator.bluetooth.requestDevice({
-                        acceptAllDevices: true,
-                        optionalServices: []
+                        filters: [
+                            { namePrefix: 'ESP32' }
+                        ],
+                        optionalServices: [SERVICE_UUID]
                     });
                     
                     console.log('=== DISCOVERED DEVICE ===');
@@ -272,15 +320,18 @@
                 });
             }
 
-            // Core connection logic - Discover ALL Bluetooth devices
+            // Core connection logic - Filter for ESP32 devices only
             async function connectToDevice() {
                 try {
-                    console.log('Discovering ALL Bluetooth devices...');
-                    console.log('Looking for service UUID:', SERVICE_UUID);
-                    
-                    // Request device with acceptAllDevices to show all BLE devices
+                    console.log('Searching for ESP32 devices...');
+                    console.log('Looking for devices with name starting with "ESP32"');
+                    console.log('Service UUID:', SERVICE_UUID);
+
+                    // Request device filtering by name prefix "ESP32"
                     device = await navigator.bluetooth.requestDevice({
-                        acceptAllDevices: true,
+                        filters: [
+                            { namePrefix: 'ESP32' }
+                        ],
                         optionalServices: [SERVICE_UUID]
                     });
                     
@@ -315,15 +366,24 @@
                     writeChar = await service.getCharacteristic(CHAR_WRITE);
                     console.log('WRITE characteristic obtained');
 
-                    // Start notifications
-                    await notifyChar.startNotifications();
-                    // automatically request one scan after connecting
-                    requestScan();
+                    // Add event listener BEFORE starting notifications
                     notifyChar.addEventListener('characteristicvaluechanged', handleNotify);
+
+                    // Start notifications
+                    console.log('Starting notifications...');
+                    await notifyChar.startNotifications();
+                    console.log('Notifications started');
 
                     const statusEl = document.getElementById('status');
                     if (statusEl) statusEl.innerText = 'Connected to ' + device.name;
                     updateStatus('Connected to ' + device.name, 'success');
+
+                    // Wait a moment for notifications to settle, then request scan
+                    console.log('Waiting before requesting WiFi scan...');
+                    setTimeout(async () => {
+                        console.log('Automatically requesting WiFi scan...');
+                        await requestScan();
+                    }, 1000);  // Increased to 1 second for better stability
 
                 } catch (e) {
                     console.error(e);
@@ -332,34 +392,64 @@
             }
 
             function onDisconnected() {
+                console.log('Device disconnected');
                 const statusEl = document.getElementById('status');
                 if (statusEl) statusEl.innerText = 'Disconnected';
                 document.getElementById('networks').innerHTML = '';
                 writeChar = null;
                 notifyChar = null;
+                scanInProgress = false;  // Reset scan state on disconnect
+                if (window._scanTimeout) clearTimeout(window._scanTimeout);
                 const scanSpinner = document.getElementById('scanSpinner');
                 if (scanSpinner) scanSpinner.classList.remove('show');
+                updateStatus('Disconnected from ESP32', 'info');
             }
 
             function handleNotify(event) {
                 const value = new TextDecoder().decode(event.target.value);
-                console.log('Notify:', value);
+                console.log('Notification received:', value);
+
+                // Ignore empty notifications
+                if (!value || value.trim().length === 0) {
+                    console.log('Ignoring empty notification');
+                    return;
+                }
 
                 if (value.startsWith('WIFI_LIST:')) {
-                    // scanning finished; hide spinner
+                    // Scan completed successfully
+                    console.log('WiFi scan results received');
+
+                    // Clear timeout and reset scan state
+                    if (window._scanTimeout) clearTimeout(window._scanTimeout);
+                    scanInProgress = false;
+
+                    // Hide spinner and enable button
                     const scanSpinner = document.getElementById('scanSpinner');
                     if (scanSpinner) scanSpinner.classList.remove('show');
                     const scanBtn = document.getElementById('scanBtn');
                     if (scanBtn) scanBtn.disabled = false;
+
+                    // Parse and display networks
                     const list = value.replace('WIFI_LIST:', '').split(',').filter(s => s && s !== 'NONE');
+                    console.log('Networks found:', list.length);
+
                     const ul = document.getElementById('networks');
-                    ul.innerHTML = list.map(s => `<li><button class="network-btn" onclick="fillSSID('${s.replace(/'/g, "\\'")}')">${s}</button></li>`).join('');
+                    if (list.length > 0) {
+                        ul.innerHTML = list.map(s => `<li><button class="network-btn" onclick="fillSSID('${s.replace(/'/g, "\\'")}')">${s}</button></li>`).join('');
+                        updateStatus(`Found ${list.length} WiFi networks`, 'success');
+                    } else {
+                        ul.innerHTML = '<li style="color: #6b7280; padding: 8px;">No networks found</li>';
+                        updateStatus('No WiFi networks found', 'info');
+                    }
                 } else if (value.startsWith('CONNECTED:')) {
-                    updateStatus('ESP32 connected to WiFi: ' + value.replace('CONNECTED:', ''), 'success');
+                    const ip = value.replace('CONNECTED:', '');
+                    console.log('ESP32 connected to WiFi:', ip);
+                    updateStatus('ESP32 connected to WiFi: ' + ip, 'success');
                 } else if (value === 'FAILED') {
+                    console.log('WiFi connection failed');
                     updateStatus('ESP32 failed to connect with provided credentials.', 'error');
                 } else {
-                    console.log('Other:', value);
+                    console.log('Other notification:', value);
                 }
             }
 
@@ -391,34 +481,53 @@
             // Request a scan by writing 'SCAN' to the device. Shows spinner and disables Scan button until result.
             async function requestScan() {
                 try {
+                    // Prevent multiple simultaneous scans
+                    if (scanInProgress) {
+                        console.log('Scan already in progress, ignoring request');
+                        return;
+                    }
+
                     const scanSpinner = document.getElementById('scanSpinner');
                     const scanBtn = document.getElementById('scanBtn');
-                    if (scanBtn) scanBtn.disabled = true;
-                    if (scanSpinner) scanSpinner.classList.add('show');
+
                     if (!writeChar) {
                         console.warn('No write characteristic available to request scan');
                         updateStatus('Not connected to device; cannot request scan', 'error');
-                        if (scanBtn) scanBtn.disabled = false;
-                        if (scanSpinner) scanSpinner.classList.remove('show');
                         return;
                     }
+
+                    scanInProgress = true;
+                    if (scanBtn) scanBtn.disabled = true;
+                    if (scanSpinner) scanSpinner.classList.add('show');
+
+                    console.log('Sending SCAN command to ESP32...');
                     const data = new TextEncoder().encode('SCAN');
+
+                    // Write with a small delay to ensure no other operations are pending
+                    await new Promise(resolve => setTimeout(resolve, 100));
                     await writeChar.writeValue(data);
-                    // start a 10s timeout to re-enable the button if no WIFI_LIST arrives
+                    console.log('SCAN command sent successfully');
+
+                    // Start a 20s timeout to re-enable button if no WIFI_LIST arrives
+                    // Async WiFi scan on ESP32 takes 5-10 seconds typically
                     if (window._scanTimeout) clearTimeout(window._scanTimeout);
                     window._scanTimeout = setTimeout(() => {
+                        console.log('Scan timeout reached (20s)');
+                        scanInProgress = false;
                         const scanSpinner = document.getElementById('scanSpinner');
                         const scanBtn = document.getElementById('scanBtn');
                         if (scanSpinner) scanSpinner.classList.remove('show');
                         if (scanBtn) scanBtn.disabled = false;
-                        updateStatus('Scan timed out. Try again.', 'error');
-                    }, 10000);
+                        updateStatus('Scan timed out. Click Scan to retry.', 'error');
+                    }, 20000);
                 } catch (e) {
-                    console.error('Scan request failed', e);
+                    console.error('Scan request failed:', e);
+                    scanInProgress = false;
                     const scanBtn = document.getElementById('scanBtn');
                     const scanSpinner = document.getElementById('scanSpinner');
                     if (scanBtn) scanBtn.disabled = false;
                     if (scanSpinner) scanSpinner.classList.remove('show');
+                    updateStatus('Scan failed: ' + e.message, 'error');
                 }
             }
 

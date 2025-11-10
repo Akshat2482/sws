@@ -15,6 +15,7 @@ static bool deviceConnected = false;
 
 // scanRequested controls one-shot scans triggered by request
 static volatile bool scanRequested = false;
+static bool scanInProgress = false;  // Track if async scan is running
 
 // BLE UUIDs (keep same as backup or change if needed)
 #define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
@@ -69,17 +70,13 @@ class WriteCallbacks : public BLECharacteristicCallbacks
         // support a SCAN command (client asks for available networks)
         if (data.equalsIgnoreCase("SCAN") || data.equalsIgnoreCase("DISCOVER"))
         {
-            Serial.println("SCAN command received, requesting WiFi scan...");
-            // request a one-shot scan; wifi_manager_loop will run it
+            Serial.println("SCAN command received!");
+            Serial.println("Triggering async WiFi scan (non-blocking)...");
+            // Request async scan - wifi_manager_loop will handle it
             wifi_manager_request_scan();
-            // optionally return current cached list immediately
-            if (deviceConnected && pNotifyChar)
-            {
-                String list = wifi_manager_scan_list();
-                String payload = "WIFI_LIST:" + list;
-                pNotifyChar->setValue(payload.c_str());
-                pNotifyChar->notify();
-            }
+            // DO NOT send response here - let async scan complete and send results
+            // This prevents blocking BLE operations
+            Serial.println("SCAN request queued, waiting for async scan results...");
             return;
         }
 
@@ -103,6 +100,13 @@ class WriteCallbacks : public BLECharacteristicCallbacks
 
 void wifi_manager_init() {
     Serial.println("=== BLE INITIALIZATION START ===");
+
+    // CRITICAL: Ensure WiFi is completely OFF before starting BLE
+    Serial.println("Disabling WiFi to prevent auto-reconnection during BLE provisioning...");
+    WiFi.disconnect(true);  // Disconnect and erase stored WiFi config
+    WiFi.mode(WIFI_OFF);    // Turn off WiFi radio completely
+    delay(500);
+    Serial.println("WiFi disabled");
 
     // Initialize BLE
     Serial.println("Initializing BLE device...");
@@ -149,16 +153,18 @@ void wifi_manager_init() {
     Serial.println(SERVICE_UUID);
     pAdvertising->addServiceUUID(SERVICE_UUID);
 
-    // Set scan response to true (important for visibility)
-    Serial.println("Setting scan response to true");
-    pAdvertising->setScanResponse(true);  // Enable scan response
+    // Enable scan response to include device name (critical for discovery)
+    Serial.println("Configuring scan response with device name");
+    pAdvertising->setScanResponse(true);
 
-    // Set advertising intervals (min and max)
-    pAdvertising->setMinInterval(0x20);  // Set a shorter advertising interval (min)
-    pAdvertising->setMaxInterval(0x30);  // Set a slightly larger advertising interval (max)
+    // Set minimum preferred connection interval (in units of 1.25ms)
+    // Faster intervals = better responsiveness
+    pAdvertising->setMinPreferred(0x06);  // 7.5ms
 
-    // Set the device name in the advertisement
-    pAdvertising->setName("ESP32S3");  // Set the device name explicitly
+    // Shorter advertising intervals for faster discovery
+    // Values are in units of 0.625ms
+    pAdvertising->setMinInterval(0x20);  // 20ms (32 * 0.625ms)
+    pAdvertising->setMaxInterval(0x40);  // 40ms (64 * 0.625ms)
 
     Serial.println("Starting BLE advertising...");
     BLEDevice::startAdvertising();
@@ -174,9 +180,11 @@ void wifi_manager_init() {
     Serial.println(BLEDevice::getAddress().toString().c_str());
     Serial.println("BLE advertising should be active now!");
 
-    // Test: Scan for nearby BLE devices to verify BLE is working
-    Serial.println("Testing BLE functionality by scanning for nearby devices...");
-    scanNearbyBLEDevices();
+    // Note: Removed scanNearbyBLEDevices() call as it interferes with advertising
+    // The ESP32 BLE stack has limitations when trying to both advertise AND scan
+    // Scanning stops advertising, making the device invisible to browsers
+    Serial.println("=== BLE INITIALIZATION COMPLETE ===");
+    Serial.println("ESP32S3 is now discoverable and ready for pairing!");
 }
 
 
@@ -214,19 +222,94 @@ void scanNearbyBLEDevices() {
 void wifi_manager_loop()
 {
     // scanRequested is the global flag set by wifi_manager_request_scan()
-    if (scanRequested && deviceConnected)
+    if (scanRequested && deviceConnected && !scanInProgress)
     {
         scanRequested = false;
-        Serial.println("Scanning WiFi...");
+        scanInProgress = true;
+        Serial.println("=== STARTING ASYNC WiFi SCAN ===");
+        Serial.println("Starting non-blocking WiFi scan to keep BLE alive...");
 
-        String list = wifi_manager_scan_list();
-        String payload = "WIFI_LIST:" + list;
+        // CRITICAL: Ensure WiFi is in correct mode but NOT auto-connecting
+        WiFi.mode(WIFI_STA);  // Enable WiFi in station mode for scanning
+        WiFi.disconnect();     // Ensure not connected to anything
+        delay(100);
 
-        if (deviceConnected && pNotifyChar)
+        Serial.println("WiFi mode: STA (scan only, no auto-connect)");
+
+        // Start ASYNC scan (non-blocking) - this returns immediately
+        WiFi.scanNetworks(true, false, false, 300);  // async=true, show_hidden=false, passive=false, max_ms_per_chan=300
+        Serial.println("WiFi scan started in background");
+    }
+
+    // Check if async scan has completed
+    if (scanInProgress)
+    {
+        int n = WiFi.scanComplete();
+
+        if (n == WIFI_SCAN_RUNNING)
         {
-            pNotifyChar->setValue(payload.c_str());
-            pNotifyChar->notify();
-            Serial.println("Notified client: " + payload);
+            // Still scanning, do nothing - BLE continues to work
+            static unsigned long lastPrint = 0;
+            if (millis() - lastPrint > 1000)
+            {
+                Serial.println("WiFi scan still running... (BLE active)");
+                lastPrint = millis();
+            }
+        }
+        else if (n == WIFI_SCAN_FAILED)
+        {
+            Serial.println("WiFi scan FAILED");
+            scanInProgress = false;
+
+            if (deviceConnected && pNotifyChar)
+            {
+                pNotifyChar->setValue("WIFI_LIST:NONE");
+                pNotifyChar->notify();
+                Serial.println("Notified client: WIFI_LIST:NONE (scan failed)");
+            }
+        }
+        else if (n >= 0)
+        {
+            // Scan completed successfully
+            Serial.print("WiFi scan complete! Found ");
+            Serial.print(n);
+            Serial.println(" networks");
+
+            String list = "";
+            for (int i = 0; i < n; ++i)
+            {
+                String ss = WiFi.SSID(i);
+                Serial.print("  ");
+                Serial.print(i + 1);
+                Serial.print(": ");
+                Serial.print(ss);
+                Serial.print(" (");
+                Serial.print(WiFi.RSSI(i));
+                Serial.println(" dBm)");
+
+                if (ss.length() > 0)
+                {
+                    if (list.length() > 0)
+                        list += ",";
+                    list += ss;
+                }
+            }
+
+            if (list.length() == 0)
+                list = "NONE";
+
+            String payload = "WIFI_LIST:" + list;
+
+            if (deviceConnected && pNotifyChar)
+            {
+                pNotifyChar->setValue(payload.c_str());
+                pNotifyChar->notify();
+                Serial.println("Notified client: " + payload);
+            }
+
+            WiFi.scanDelete();
+            scanInProgress = false;
+            Serial.println("=== WiFi SCAN COMPLETE ===");
         }
     }
     
@@ -247,8 +330,9 @@ void wifi_manager_loop()
 void wifi_manager_try_autoconnect()
 {
     prefs.begin("wifi", true);
-    String storedSSID = prefs.getString("ssid", "AkshtAhwin2G");
-    String storedPass = prefs.getString("pass", "virtualwings");
+    // Remove hardcoded defaults - if no stored credentials, we want BLE to start
+    String storedSSID = prefs.getString("ssid", "");
+    String storedPass = prefs.getString("pass", "");
     prefs.end();
 
     if (storedSSID.length() > 0)
@@ -268,30 +352,39 @@ void wifi_manager_try_autoconnect()
         if (WiFi.status() == WL_CONNECTED)
         {
             Serial.println("\nAuto-connected! IP: " + WiFi.localIP().toString());
-            
+
             // ⚠️ CRITICAL: Free BLE memory for AWS IoT TLS
             Serial.println("wifi_manager: Shutting down BLE to free memory for AWS IoT...");
             Serial.print("wifi_manager: Free heap before BLE shutdown: ");
             Serial.println(ESP.getFreeHeap());
-            
+
             BLEDevice::deinit(true);  // Completely deinitialize BLE and free memory
             delay(500);
-            
+
             Serial.print("wifi_manager: Free heap after BLE shutdown: ");
             Serial.println(ESP.getFreeHeap());
             Serial.println("wifi_manager: BLE disabled - memory freed for AWS IoT");
-            
+
             // Initialize AWS client now that WiFi is available and BLE is freed
             aws_client_init();
         }
         else
         {
-            Serial.println("\nAuto-connect failed");
+            Serial.println("\n⚠️  Auto-connect FAILED!");
+            Serial.println("⚠️  Clearing invalid credentials...");
+
+            // Clear failed credentials so BLE starts on next boot
+            prefs.begin("wifi", false);
+            prefs.clear();
+            prefs.end();
+
+            Serial.println("⚠️  Credentials cleared. Will start BLE provisioning mode.");
+            Serial.println("⚠️  Device will now be discoverable for WiFi setup.");
         }
     }
     else
     {
-        Serial.println("No stored WiFi credentials");
+        Serial.println("No stored WiFi credentials - ready for BLE provisioning");
     }
 }
 
@@ -387,4 +480,24 @@ String wifi_manager_scan_list()
 bool wifi_manager_is_connected()
 {
     return WiFi.status() == WL_CONNECTED;
+}
+
+void wifi_manager_clear_credentials()
+{
+    Serial.println("=== CLEARING WIFI CREDENTIALS ===");
+
+    // Clear Preferences storage
+    prefs.begin("wifi", false);
+    prefs.clear();
+    prefs.end();
+    Serial.println("✓ Preferences cleared");
+
+    // Also clear WiFi library's stored config
+    WiFi.disconnect(true);  // true = erase stored WiFi config
+    WiFi.mode(WIFI_OFF);
+    Serial.println("✓ WiFi config erased");
+    Serial.println("✓ WiFi radio disabled");
+
+    delay(500);
+    Serial.println("=== CREDENTIALS CLEARED SUCCESSFULLY ===");
 }
