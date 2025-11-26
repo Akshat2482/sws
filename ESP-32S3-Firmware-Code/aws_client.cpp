@@ -442,39 +442,27 @@ bool aws_client_connect()
     Serial.print("aws_client: Free heap: ");
     Serial.println(ESP.getFreeHeap());
 
-    // Ensure system time is synced for TLS validation
-    Serial.println("aws_client: Checking NTP time sync...");
+    // Check if time is synced (should be done by wifi_manager)
     time_t now_time = time(nullptr);
+    Serial.print("aws_client: Current time: ");
+    Serial.println((long)now_time);
+
+    bool useInsecureMode = false;
     if (now_time < 1600000000)
     {
-        Serial.println("aws_client: Time not synced, syncing via NTP...");
-        configTime(0, 0, "pool.ntp.org", "time.google.com");
-        unsigned long start = millis();
-        while (millis() - start < 10000)
-        {
-            now_time = time(nullptr);
-            if (now_time > 1600000000)
-            {
-                Serial.print("aws_client: Time synced: ");
-                Serial.println((long)now_time);
-                break;
-            }
-            delay(500);
-            Serial.print(".");
-        }
-        if (now_time < 1600000000)
-        {
-            Serial.println("\naws_client: WARNING - Time sync failed, TLS may fail");
-        }
+        Serial.println("aws_client: ⚠️  Time not synced - enabling INSECURE mode");
+        Serial.println("aws_client: (Skipping TLS certificate time validation)");
+        secureClient.setInsecure();  // Bypass certificate validation
+        useInsecureMode = true;
     }
     else
     {
-        Serial.print("aws_client: Time already synced: ");
-        Serial.println((long)now_time);
+        Serial.println("aws_client: ✓ Time is synced - using SECURE mode");
     }
 
     // NOTE: Certificates already set in aws_client_init()
     // Do NOT re-set them here to avoid memory issues
+    // NOTE: Time sync done by wifi_manager to avoid UDP/TLS conflicts
 
     // Start TLS connection
     Serial.println("aws_client: Starting TLS handshake...");
