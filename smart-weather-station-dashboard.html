@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Weather Station - IAM Dashboard</title>
+    <title>Smart Weather Station </title>
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -15,7 +16,8 @@
     <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
 
     <!-- Material Symbols -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 
     <style>
         :root {
@@ -59,7 +61,7 @@
             z-index: 0;
         }
 
-        body > * {
+        body>* {
             position: relative;
             z-index: 1;
         }
@@ -85,6 +87,7 @@
                 opacity: 0;
                 transform: translateY(-20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -124,8 +127,17 @@
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(0.95); }
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(0.95);
+            }
         }
 
         .dashboard-grid {
@@ -140,18 +152,36 @@
             animation: fadeInUp 0.6s ease-out backwards;
         }
 
-        .dashboard-grid .card:nth-child(1) { animation-delay: 0.1s; }
-        .dashboard-grid .card:nth-child(2) { animation-delay: 0.2s; }
-        .dashboard-grid .card:nth-child(3) { animation-delay: 0.3s; }
-        .dashboard-grid .card:nth-child(4) { animation-delay: 0.4s; }
-        .dashboard-grid .card:nth-child(5) { animation-delay: 0.5s; }
-        .dashboard-grid .card:nth-child(6) { animation-delay: 0.6s; }
+        .dashboard-grid .card:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .dashboard-grid .card:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .dashboard-grid .card:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .dashboard-grid .card:nth-child(4) {
+            animation-delay: 0.4s;
+        }
+
+        .dashboard-grid .card:nth-child(5) {
+            animation-delay: 0.5s;
+        }
+
+        .dashboard-grid .card:nth-child(6) {
+            animation-delay: 0.6s;
+        }
 
         @keyframes fadeInUp {
             from {
                 opacity: 0;
                 transform: translateY(30px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -227,9 +257,12 @@
         }
 
         @keyframes iconGlow {
-            0%, 100% {
+
+            0%,
+            100% {
                 filter: drop-shadow(0 0 15px rgba(0, 255, 255, 0.4));
             }
+
             50% {
                 filter: drop-shadow(0 0 25px rgba(0, 255, 255, 0.7));
             }
@@ -248,7 +281,10 @@
         }
 
         .time-card {
-            grid-column: span 2;
+            grid-column: span 4;
+            justify-self: center;
+            max-width: 600px;
+            width: 100%;
         }
 
         #time {
@@ -286,7 +322,9 @@
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
-            .chart-card, .time-card {
+
+            .chart-card,
+            .time-card {
                 grid-column: span 1;
             }
         }
@@ -295,7 +333,7 @@
 
 <body>
     <div class="header">
-        <h1>🌤️ Smart Weather Station (IAM)</h1>
+        <h1>🌤️ Smart Weather Station</h1>
         <div class="connection-status">
             <div class="status-dot" id="statusDot"></div>
             <span id="connectionText">Not Connected</span>
@@ -336,11 +374,6 @@
             <p id="light-status" class="status-value loading">--</p>
             <p id="light-value" class="raw-value">Raw: --</p>
             <div class="last-update" id="light-time">Waiting for data...</div>
-        </div>
-
-        <div class="card chart-card">
-            <h2>📊 Air Quality Trend</h2>
-            <canvas id="historyChart"></canvas>
         </div>
 
         <div class="card time-card">
@@ -548,7 +581,7 @@
 
                 historicalData.push({ date: new Date(), value: data.air });
                 if (historicalData.length > 20) historicalData.shift();
-                updateHistoryChart();
+                // updateHistoryChart();
             }
 
             if (data.light !== undefined) {
@@ -606,30 +639,26 @@
 
         function updateHumidityIcon(humidity) {
             const icon = document.getElementById('humidity-icon');
-            icon.innerHTML = `<span class="material-symbols-outlined">${
-                humidity < 30 ? 'humidity_low' : humidity < 60 ? 'humidity_mid' : 'humidity_high'
-            }</span>`;
+            icon.innerHTML = `<span class="material-symbols-outlined">${humidity < 30 ? 'humidity_low' : humidity < 60 ? 'humidity_mid' : 'humidity_high'
+                }</span>`;
         }
 
         function updateTemperatureIcon(tempF) {
             const icon = document.getElementById('temperature-icon');
-            icon.innerHTML = `<span class="material-symbols-outlined">${
-                tempF < 50 ? 'ac_unit' : tempF <= 80 ? 'thermostat' : 'whatshot'
-            }</span>`;
+            icon.innerHTML = `<span class="material-symbols-outlined">${tempF < 50 ? 'ac_unit' : tempF <= 80 ? 'thermostat' : 'whatshot'
+                }</span>`;
         }
 
         function updateCO2Icon(value) {
             const icon = document.getElementById('co2-icon');
-            icon.innerHTML = `<span class="material-symbols-outlined">${
-                value < 1000 ? 'air' : 'warning'
-            }</span>`;
+            icon.innerHTML = `<span class="material-symbols-outlined">${value < 1000 ? 'air' : 'warning'
+                }</span>`;
         }
 
         function updateLightIcon(value) {
             const icon = document.getElementById('light-icon');
-            icon.innerHTML = `<span class="material-symbols-outlined">${
-                value < 1000 ? 'nights_stay' : value < 2500 ? 'wb_twilight' : 'wb_sunny'
-            }</span>`;
+            icon.innerHTML = `<span class="material-symbols-outlined">${value < 1000 ? 'nights_stay' : value < 2500 ? 'wb_twilight' : 'wb_sunny'
+                }</span>`;
         }
 
         function initializeChart() {
@@ -687,7 +716,7 @@
 
         // Initialize on load
         document.addEventListener('DOMContentLoaded', () => {
-            initializeChart();
+            // initializeChart();
             updateTime();
             setInterval(updateTime, 1000);
 
@@ -702,4 +731,5 @@
         });
     </script>
 </body>
+
 </html>

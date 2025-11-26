@@ -1,16 +1,20 @@
 #include "sensor_manager.h"
 #include "aws_client.h"
 #include <Wire.h>
+#include <WiFi.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_SH110X.h>
 #include <DHT.h>
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
-#define OLED_SDA 11 // ESP32-S3 I2C Data
-#define OLED_SCL 10 // ESP32-S3 I2C Clock
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, OLED_SDA, OLED_SCL, OLED_RESET);
+#define OLED_SDA 8  // ESP32-S3 I2C Data
+#define OLED_SCL 9  // ESP32-S3 I2C Clock
+#define OLED_ADDRESS 0x3C  // I2C address for SH1106 (1.3 inch display)
+
+// Create SH1106 display object
+Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define DHTPIN 4
 #define DHTTYPE DHT11
@@ -86,23 +90,41 @@ void sensors_init()
     pinMode(MQ135_PIN, INPUT); // Digital input for MQ135 DO pin
     pinMode(LDR_PIN, INPUT);   // Analog input for LDR
 
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D))
+    // Initialize I2C with custom pins
+    Wire.begin(OLED_SDA, OLED_SCL);
+
+    // Initialize SH1106 display (1.3 inch)
+    if (!display.begin(OLED_ADDRESS, true))
     {
-        Serial.println(F("OLED not found - continuing without display"));
+        Serial.println(F("SH1106 OLED not found - continuing without display"));
         // Don't hang, just continue without display
     }
     else
     {
+        // Sleek boot animation
         display.clearDisplay();
+
+        // Title
+        display.setTextSize(2);
+        display.setTextColor(SH110X_WHITE);
+        display.setCursor(24, 12);
+        display.print("WEATHER");
         display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(10, 20);
-        display.println("Weather Station");
-        display.setCursor(10, 35);
-        display.println("Initializing...");
+        display.setCursor(45, 30);
+        display.print("SYS");
         display.display();
-        delay(1500);
-        Serial.println("OLED display initialized!");
+        delay(500);
+
+        // Minimal loading bar
+        display.drawRect(24, 44, 80, 6, SH110X_WHITE);
+        for (int i = 0; i < 76; i += 12) {
+            display.fillRect(26, 46, i, 2, SH110X_WHITE);
+            display.display();
+            delay(80);
+        }
+        delay(300);
+
+        Serial.println("SH1106 1.3\" OLED initialized!");
     }
 
     Serial.println("Sensors initialized successfully!");
@@ -132,12 +154,30 @@ void sensors_update()
     if (isnan(humidity) || isnan(tempF))
     {
         Serial.println(F("Failed to read from DHT sensor!"));
+
+        // Minimal error display
         display.clearDisplay();
+        display.drawFastHLine(0, 0, 128, SH110X_WHITE);
+        display.drawFastHLine(0, 1, 128, SH110X_WHITE);
+
+        display.setTextSize(2);
+        display.setTextColor(SH110X_WHITE);
+        display.setCursor(30, 20);
+        display.print("ERROR");
+
         display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(10, 25);
-        display.println("DHT Error!");
-        display.display();
+        display.setCursor(35, 42);
+        display.print("DHT FAIL");
+
+        // Blinking error indicator
+        for (int i = 0; i < 3; i++) {
+            display.fillCircle(64, 55, 3, SH110X_WHITE);
+            display.display();
+            delay(200);
+            display.fillCircle(64, 55, 3, SH110X_BLACK);
+            display.display();
+            delay(200);
+        }
         return;
     }
 
@@ -188,31 +228,73 @@ void sensors_update()
         Serial.println("WiFi not connected - skipping sensor publish");
     }
 
-    // OLED output - Display current sensor readings
+    // OLED output - Sleek Minimal Design
     display.clearDisplay();
+
+    // ═══ THIN TOP BAR ═══
+    display.drawFastHLine(0, 0, 128, SH110X_WHITE);
+    display.drawFastHLine(0, 1, 128, SH110X_WHITE);
     display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println(" WEATHER STATION ");
-    display.println("--------------------");
+    display.setTextColor(SH110X_WHITE);
+    display.setCursor(30, 4);
+    display.print("WEATHER-SYS");
 
-    // Temperature
-    display.print("Temp : ");
-    display.print(tempF, 1);
-    display.println(" F");
+    // ═══ MAIN DATA (BIG & BOLD) ═══
+    display.setTextSize(2);
+    display.setCursor(2, 16);
+    display.print(tempF, 0);
+    display.print("*F");
 
-    // Humidity
-    display.print("Humid: ");
-    display.print(humidity, 1);
-    display.println(" %");
+    display.setCursor(72, 16);
+    display.print(humidity, 0);
+    display.print("%");
 
-    // Air Quality
-    display.print("Air  : ");
-    display.println(airStatus);
+    // ═══ SLIM PROGRESS BARS ═══
+    display.setTextSize(1);
+    // Temp bar
+    int tempBar = constrain(map(tempF, 32, 110, 0, 58), 0, 58);
+    display.drawRect(2, 34, 60, 4, SH110X_WHITE);
+    if (tempBar > 0) display.fillRect(3, 35, tempBar, 2, SH110X_WHITE);
 
-    // Light Level
-    display.print("Light: ");
-    display.println(lightStatus);
+    // Humidity bar
+    int humBar = constrain(map(humidity, 0, 100, 0, 58), 0, 58);
+    display.drawRect(68, 34, 60, 4, SH110X_WHITE);
+    if (humBar > 0) display.fillRect(69, 35, humBar, 2, SH110X_WHITE);
+
+    // ═══ BOTTOM STATUS LINE ═══
+    display.drawFastHLine(0, 42, 128, SH110X_WHITE);
+
+    // Air quality indicator
+    display.setCursor(4, 46);
+    display.print("AIR");
+    display.setCursor(2, 54);
+    if (airStatus == "Good") {
+        display.print("good");
+        display.fillCircle(30, 57, 2, SH110X_WHITE);
+    } else {
+        display.print("bad");
+    }
+
+    // Light level
+    display.setCursor(42, 46);
+    display.print("LIGHT");
+    display.setCursor(42, 54);
+    if (lightStatus.indexOf("Bright") >= 0) {
+        display.print("HI");
+        display.drawCircle(68, 57, 2, SH110X_WHITE);
+        display.fillCircle(68, 57, 1, SH110X_WHITE);
+    } else if (lightStatus.indexOf("Dim") >= 0) {
+        display.print("MD");
+        display.drawCircle(68, 57, 2, SH110X_WHITE);
+    } else {
+        display.print("LO");
+        display.fillCircle(68, 57, 2, SH110X_WHITE);
+    }
+
+    // Status corner dot (alive indicator)
+    static bool blink = false;
+    blink = !blink;
+    if (blink) display.fillCircle(124, 57, 2, SH110X_WHITE);
 
     display.display();
 }

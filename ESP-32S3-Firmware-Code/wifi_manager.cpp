@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <BLEDevice.h>
 #include <BLE2902.h>
+#include <time.h>
 
 Preferences prefs;
 
@@ -357,62 +358,116 @@ void wifi_manager_loop()
 
 void wifi_manager_try_autoconnect()
 {
+    // ⚠️ HARDCODED WiFi CREDENTIALS (Fallback)
+    const char* FALLBACK_SSID = "AkshtAhwin2G";
+    const char* FALLBACK_PASS = "virtualwings";
+
     prefs.begin("wifi", true);
-    // Remove hardcoded defaults - if no stored credentials, we want BLE to start
     String storedSSID = prefs.getString("ssid", "");
     String storedPass = prefs.getString("pass", "");
     prefs.end();
 
+    // Use stored credentials if available, otherwise use hardcoded fallback
+    String ssidToUse;
+    String passToUse;
+    bool usingStored = false;
+
     if (storedSSID.length() > 0)
     {
-        Serial.println("Stored credentials found: " + storedSSID);
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(storedSSID.c_str(), storedPass.c_str());
-
-        int tries = 0;
-        while (WiFi.status() != WL_CONNECTED && tries < 20)
-        {
-            delay(500);
-            Serial.print(".");
-            tries++;
-        }
-
-        if (WiFi.status() == WL_CONNECTED)
-        {
-            Serial.println("\nAuto-connected! IP: " + WiFi.localIP().toString());
-
-            // ⚠️ CRITICAL: Free BLE memory for AWS IoT TLS
-            Serial.println("wifi_manager: Shutting down BLE to free memory for AWS IoT...");
-            Serial.print("wifi_manager: Free heap before BLE shutdown: ");
-            Serial.println(ESP.getFreeHeap());
-
-            BLEDevice::deinit(true);  // Completely deinitialize BLE and free memory
-            delay(500);
-
-            Serial.print("wifi_manager: Free heap after BLE shutdown: ");
-            Serial.println(ESP.getFreeHeap());
-            Serial.println("wifi_manager: BLE disabled - memory freed for AWS IoT");
-
-            // Initialize AWS client now that WiFi is available and BLE is freed
-            aws_client_init();
-        }
-        else
-        {
-            Serial.println("\n⚠️  Auto-connect FAILED!");
-            Serial.println("⚠️  Clearing invalid credentials...");
-
-            // Clear failed credentials so BLE starts on next boot
-            prefs.begin("wifi", false);
-            prefs.clear();
-            prefs.end();
-
-            Serial.println("⚠️  Credentials cleared. Will start BLE provisioning mode.");
-            Serial.println("⚠️  Device will now be discoverable for WiFi setup.");
-        }
+        ssidToUse = storedSSID;
+        passToUse = storedPass;
+        usingStored = true;
+        Serial.println("Using stored credentials: " + storedSSID);
     }
     else
     {
-        Serial.println("No stored WiFi credentials - ready for BLE provisioning");
+        ssidToUse = String(FALLBACK_SSID);
+        passToUse = String(FALLBACK_PASS);
+        Serial.println("No stored credentials - using hardcoded WiFi: " + ssidToUse);
+    }
+
+    // Attempt WiFi connection
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssidToUse.c_str(), passToUse.c_str());
+
+    int tries = 0;
+    while (WiFi.status() != WL_CONNECTED && tries < 20)
+    {
+        delay(500);
+        Serial.print(".");
+        tries++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println("\nWiFi connected! IP: " + WiFi.localIP().toString());
+
+        // Sync time via NTP BEFORE starting AWS IoT (prevents UDP conflicts)
+        Serial.println("wifi_manager: Syncing time via NTP...");
+        Serial.println("wifi_manager: Trying multiple NTP servers...");
+
+        // Try multiple NTP servers (some hotspots block certain servers)
+        configTime(0, 0, "time.google.com", "pool.ntp.org", "time.cloudflare.com");
+
+        // Wait for time sync with timeout
+        time_t now_time = time(nullptr);
+        unsigned long start = millis();
+        int attempts = 0;
+        while (now_time < 1600000000 && millis() - start < 10000)
+        {
+            delay(500);
+            now_time = time(nullptr);
+            attempts++;
+            if (attempts % 5 == 0) Serial.print(".");
+        }
+
+        if (now_time > 1600000000)
+        {
+            Serial.println();
+            Serial.print("wifi_manager: ✓ Time synced successfully: ");
+            Serial.println(ctime(&now_time));
+        }
+        else
+        {
+            Serial.println();
+            Serial.println("wifi_manager: ⚠️  Time sync FAILED (hotspot may block NTP)");
+            Serial.println("wifi_manager: Will use INSECURE mode (no TLS time validation)");
+            // Set a flag that aws_client can check
+        }
+
+        // ⚠️ CRITICAL: Free BLE memory for AWS IoT TLS
+        Serial.println("wifi_manager: Shutting down BLE to free memory for AWS IoT...");
+        Serial.print("wifi_manager: Free heap before BLE shutdown: ");
+        Serial.println(ESP.getFreeHeap());
+
+        BLEDevice::deinit(true);  // Completely deinitialize BLE and free memory
+        delay(500);
+
+        Serial.print("wifi_manager: Free heap after BLE shutdown: ");
+        Serial.println(ESP.getFreeHeap());
+        Serial.println("wifi_manager: BLE disabled - memory freed for AWS IoT");
+
+        // Initialize AWS client now that WiFi is available and BLE is freed
+        aws_client_init();
+    }
+    else
+    {
+        Serial.println("\n⚠️  WiFi connection FAILED!");
+
+        // Only clear stored credentials if they were used and failed
+        if (usingStored)
+        {
+            Serial.println("⚠️  Clearing invalid stored credentials...");
+            prefs.begin("wifi", false);
+            prefs.clear();
+            prefs.end();
+            Serial.println("⚠️  Stored credentials cleared. Will use hardcoded WiFi on next boot.");
+        }
+        else
+        {
+            Serial.println("⚠️  Hardcoded WiFi credentials failed!");
+            Serial.println("⚠️  Device will start BLE provisioning mode for manual setup.");
+        }
     }
 }
 
@@ -452,7 +507,40 @@ void wifi_manager_handle_write(const String &ssid, const String &pass, BLECharac
             notifyChar->notify();
             delay(1000); // Give time for notification to be sent
         }
-        
+
+        // Sync time via NTP BEFORE starting AWS IoT (prevents UDP conflicts)
+        Serial.println("wifi_manager: Syncing time via NTP...");
+        Serial.println("wifi_manager: Trying multiple NTP servers...");
+
+        // Try multiple NTP servers (some hotspots block certain servers)
+        configTime(0, 0, "time.google.com", "pool.ntp.org", "time.cloudflare.com");
+
+        // Wait for time sync with timeout
+        time_t now_time = time(nullptr);
+        unsigned long start = millis();
+        int attempts = 0;
+        while (now_time < 1600000000 && millis() - start < 10000)
+        {
+            delay(500);
+            now_time = time(nullptr);
+            attempts++;
+            if (attempts % 5 == 0) Serial.print(".");
+        }
+
+        if (now_time > 1600000000)
+        {
+            Serial.println();
+            Serial.print("wifi_manager: ✓ Time synced successfully: ");
+            Serial.println(ctime(&now_time));
+        }
+        else
+        {
+            Serial.println();
+            Serial.println("wifi_manager: ⚠️  Time sync FAILED (hotspot may block NTP)");
+            Serial.println("wifi_manager: Will use INSECURE mode (no TLS time validation)");
+            // Set a flag that aws_client can check
+        }
+
         // ⚠️ CRITICAL: Free BLE memory for AWS IoT TLS
         Serial.println("wifi_manager: Shutting down BLE to free memory for AWS IoT...");
         Serial.print("wifi_manager: Free heap before BLE shutdown: ");
