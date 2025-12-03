@@ -10,6 +10,7 @@ Quick setup (Windows / VS Code / Arduino):
    - DHT sensor library (by Adafruit)
    - Adafruit SSD1306
    - Adafruit GFX Library
+   - ArduinoJson (by Benoit Blanchon) - Required for HTTP time sync fallback
 
 3) ⚠️ IMPORTANT: Configure partition scheme (REQUIRED for AWS IoT TLS):
    - Tools → Partition Scheme → "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)"

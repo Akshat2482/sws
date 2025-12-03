@@ -3,7 +3,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
-#include <time.h>
+#include <sys/time.h>
 
 // ⚠️ SECURITY WARNING: Credentials are embedded in this file for development only.
 // For production:
@@ -135,13 +135,11 @@ void aws_client_init()
     configureTLSforLowMemory();
 
     // CRITICAL: Set buffer size BEFORE setServer
-    // Use 512 bytes for better reliability (was 256 - too small)
     mqttClient.setBufferSize(512);
-    mqttClient.setKeepAlive(60);      // Reduced from 90
-    mqttClient.setSocketTimeout(30);   // Reduced from 45
+    mqttClient.setKeepAlive(60);
+    mqttClient.setSocketTimeout(30);
 
     mqttClient.setServer(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
-
     mqttClient.setCallback(aws_mqtt_callback);
 
     // Debug: print certificate lengths first
@@ -155,7 +153,7 @@ void aws_client_init()
     Serial.print("  - Private key: ");
     Serial.print(strlen(AWS_PRIVATE_KEY));
     Serial.println(" bytes");
-    Serial.flush();  // Ensure output is sent
+    Serial.flush();
 
     if (AWS_INSECURE)
     {
@@ -462,7 +460,6 @@ bool aws_client_connect()
 
     // NOTE: Certificates already set in aws_client_init()
     // Do NOT re-set them here to avoid memory issues
-    // NOTE: Time sync done by wifi_manager to avoid UDP/TLS conflicts
 
     // Start TLS connection
     Serial.println("aws_client: Starting TLS handshake...");
@@ -499,9 +496,6 @@ bool aws_client_connect()
             Serial.print("aws_client: SSL error code: ");
             Serial.println(lastError);
 
-            // Common error codes:
-            // -1 = generic error
-            // -76 = Out of memory
             Serial.print("aws_client: Free heap: ");
             Serial.println(ESP.getFreeHeap());
 

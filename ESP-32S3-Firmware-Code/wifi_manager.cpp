@@ -69,7 +69,8 @@ class WriteCallbacks : public BLECharacteristicCallbacks
         String data = val;
         Serial.print("Processed data: ");
         Serial.println(data);
-        // support a SCAN command (client asks for available networks)
+
+        // Support SCAN command (client asks for available networks)
         if (data.equalsIgnoreCase("SCAN") || data.equalsIgnoreCase("DISCOVER"))
         {
             Serial.println("SCAN command received!");
@@ -79,6 +80,21 @@ class WriteCallbacks : public BLECharacteristicCallbacks
             // DO NOT send response here - let async scan complete and send results
             // This prevents blocking BLE operations
             Serial.println("SCAN request queued, waiting for async scan results...");
+            return;
+        }
+
+        // Support CLEAR command (client requests credential reset)
+        if (data.equalsIgnoreCase("CLEAR") || data.equalsIgnoreCase("RESET"))
+        {
+            Serial.println("CLEAR command received via BLE!");
+            wifi_manager_clear_credentials();
+
+            if (pNotifyChar)
+            {
+                pNotifyChar->setValue("CLEARED");
+                pNotifyChar->notify();
+                Serial.println("Sent CLEARED confirmation");
+            }
             return;
         }
 
@@ -151,7 +167,7 @@ void wifi_manager_init() {
     Serial.println("Setting up BLE advertising...");
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
 
-    Serial.print("Adding service UUID to advertising: ");
+    Serial.print("Adding service UUID to advertising: ");   
     Serial.println(SERVICE_UUID);
     pAdvertising->addServiceUUID(SERVICE_UUID);
 
@@ -342,13 +358,11 @@ void wifi_manager_loop()
         }
     }
     
-    // Periodic BLE advertising status check (every 30 seconds)
+    // Periodic BLE status check (every 30 seconds)
     static unsigned long lastBLEStatusCheck = 0;
     if (millis() - lastBLEStatusCheck > 30000) {
         lastBLEStatusCheck = millis();
         Serial.println("=== BLE STATUS CHECK ===");
-        Serial.print("BLE Advertising Active: ");
-        Serial.println(BLEDevice::getAdvertising()->isAdvertising() ? "YES" : "NO");
         Serial.print("Device Connected: ");
         Serial.println(deviceConnected ? "YES" : "NO");
         Serial.print("Free Heap: ");
@@ -358,37 +372,25 @@ void wifi_manager_loop()
 
 void wifi_manager_try_autoconnect()
 {
-    // ⚠️ HARDCODED WiFi CREDENTIALS (Fallback)
-    const char* FALLBACK_SSID = "AkshtAhwin2G";
-    const char* FALLBACK_PASS = "virtualwings";
-
     prefs.begin("wifi", true);
     String storedSSID = prefs.getString("ssid", "");
     String storedPass = prefs.getString("pass", "");
     prefs.end();
 
-    // Use stored credentials if available, otherwise use hardcoded fallback
-    String ssidToUse;
-    String passToUse;
-    bool usingStored = false;
+    // Check if credentials exist
+    if (storedSSID.length() == 0)
+    {
+        Serial.println("⚠️  No stored WiFi credentials found");
+        Serial.println("⚠️  Device will enter BLE provisioning mode");
+        Serial.println("⚠️  Use your phone/browser to connect and provide WiFi credentials");
+        return;  // Exit - BLE will be started in setup()
+    }
 
-    if (storedSSID.length() > 0)
-    {
-        ssidToUse = storedSSID;
-        passToUse = storedPass;
-        usingStored = true;
-        Serial.println("Using stored credentials: " + storedSSID);
-    }
-    else
-    {
-        ssidToUse = String(FALLBACK_SSID);
-        passToUse = String(FALLBACK_PASS);
-        Serial.println("No stored credentials - using hardcoded WiFi: " + ssidToUse);
-    }
+    Serial.println("Using stored credentials: " + storedSSID);
 
     // Attempt WiFi connection
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssidToUse.c_str(), passToUse.c_str());
+    WiFi.begin(storedSSID.c_str(), storedPass.c_str());
 
     int tries = 0;
     while (WiFi.status() != WL_CONNECTED && tries < 20)
@@ -402,18 +404,16 @@ void wifi_manager_try_autoconnect()
     {
         Serial.println("\nWiFi connected! IP: " + WiFi.localIP().toString());
 
-        // Sync time via NTP BEFORE starting AWS IoT (prevents UDP conflicts)
-        Serial.println("wifi_manager: Syncing time via NTP...");
-        Serial.println("wifi_manager: Trying multiple NTP servers...");
+        // Sync time via NTP using Google's time server
+        Serial.println("wifi_manager: Syncing time via NTP (time.google.com)...");
 
-        // Try multiple NTP servers (some hotspots block certain servers)
-        configTime(0, 0, "time.google.com", "pool.ntp.org", "time.cloudflare.com");
+        configTime(0, 0, "time.google.com");
 
-        // Wait for time sync with timeout
+        // Wait for time sync with timeout (30 seconds for slower networks)
         time_t now_time = time(nullptr);
         unsigned long start = millis();
         int attempts = 0;
-        while (now_time < 1600000000 && millis() - start < 10000)
+        while (now_time < 1600000000 && millis() - start < 30000)
         {
             delay(500);
             now_time = time(nullptr);
@@ -430,9 +430,8 @@ void wifi_manager_try_autoconnect()
         else
         {
             Serial.println();
-            Serial.println("wifi_manager: ⚠️  Time sync FAILED (hotspot may block NTP)");
-            Serial.println("wifi_manager: Will use INSECURE mode (no TLS time validation)");
-            // Set a flag that aws_client can check
+            Serial.println("wifi_manager: ❌ NTP time sync FAILED");
+            Serial.println("wifi_manager: AWS connection will fail without time sync");
         }
 
         // ⚠️ CRITICAL: Free BLE memory for AWS IoT TLS
@@ -453,21 +452,14 @@ void wifi_manager_try_autoconnect()
     else
     {
         Serial.println("\n⚠️  WiFi connection FAILED!");
+        Serial.println("⚠️  Clearing invalid stored credentials...");
 
-        // Only clear stored credentials if they were used and failed
-        if (usingStored)
-        {
-            Serial.println("⚠️  Clearing invalid stored credentials...");
-            prefs.begin("wifi", false);
-            prefs.clear();
-            prefs.end();
-            Serial.println("⚠️  Stored credentials cleared. Will use hardcoded WiFi on next boot.");
-        }
-        else
-        {
-            Serial.println("⚠️  Hardcoded WiFi credentials failed!");
-            Serial.println("⚠️  Device will start BLE provisioning mode for manual setup.");
-        }
+        prefs.begin("wifi", false);
+        prefs.clear();
+        prefs.end();
+
+        Serial.println("⚠️  Credentials cleared");
+        Serial.println("⚠️  Please restart device to enter BLE provisioning mode");
     }
 }
 
@@ -508,18 +500,16 @@ void wifi_manager_handle_write(const String &ssid, const String &pass, BLECharac
             delay(1000); // Give time for notification to be sent
         }
 
-        // Sync time via NTP BEFORE starting AWS IoT (prevents UDP conflicts)
-        Serial.println("wifi_manager: Syncing time via NTP...");
-        Serial.println("wifi_manager: Trying multiple NTP servers...");
+        // Sync time via NTP using Google's time server
+        Serial.println("wifi_manager: Syncing time via NTP (time.google.com)...");
 
-        // Try multiple NTP servers (some hotspots block certain servers)
-        configTime(0, 0, "time.google.com", "pool.ntp.org", "time.cloudflare.com");
+        configTime(0, 0, "time.google.com");
 
-        // Wait for time sync with timeout
+        // Wait for time sync with timeout (30 seconds for slower networks)
         time_t now_time = time(nullptr);
         unsigned long start = millis();
         int attempts = 0;
-        while (now_time < 1600000000 && millis() - start < 10000)
+        while (now_time < 1600000000 && millis() - start < 30000)
         {
             delay(500);
             now_time = time(nullptr);
@@ -536,9 +526,8 @@ void wifi_manager_handle_write(const String &ssid, const String &pass, BLECharac
         else
         {
             Serial.println();
-            Serial.println("wifi_manager: ⚠️  Time sync FAILED (hotspot may block NTP)");
-            Serial.println("wifi_manager: Will use INSECURE mode (no TLS time validation)");
-            // Set a flag that aws_client can check
+            Serial.println("wifi_manager: ❌ NTP time sync FAILED");
+            Serial.println("wifi_manager: AWS connection will fail without time sync");
         }
 
         // ⚠️ CRITICAL: Free BLE memory for AWS IoT TLS
