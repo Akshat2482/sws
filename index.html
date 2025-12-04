@@ -142,7 +142,7 @@
 
         .dashboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 20px;
             max-width: 1400px;
             margin: 0 auto;
@@ -280,11 +280,38 @@
             font-style: italic;
         }
 
+        .ai-time-container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 20px auto 0 auto;
+            align-items: stretch;
+        }
+
+        .ai-card {
+            width: 65%;
+            min-height: 250px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: stretch;
+        }
+
+        .ai-card #ai-overview {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
         .time-card {
-            grid-column: span 4;
-            justify-self: center;
-            max-width: 600px;
-            width: 100%;
+            width: 35%;
+            min-height: 250px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
 
         #time {
@@ -319,13 +346,31 @@
         }
 
         @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+            }
+
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
 
-            .chart-card,
+            .ai-time-container {
+                flex-direction: column;
+            }
+
+            .ai-card,
             .time-card {
+                width: 100%;
+            }
+
+            .chart-card {
                 grid-column: span 1;
+            }
+
+            .connection-status {
+                flex-direction: row;
             }
         }
     </style>
@@ -375,6 +420,20 @@
             <p id="light-value" class="raw-value">Raw: --</p>
             <div class="last-update" id="light-time">Waiting for data...</div>
         </div>
+    </div>
+
+    <!-- Flex container for AI and Time cards -->
+    <div class="ai-time-container">
+        <div class="card ai-card">
+            <h2> ✦ AI Overview</h2>
+            <div id="ai-overview" class="loading" style="font-size: 1rem; line-height: 1.6; text-align: left;">
+                Click the button below to get AI analysis of the current air quality and environment data.
+            </div>
+            <button id="aiRefreshButton" onclick="refreshAIOverview()"
+                style="margin-top: 15px; padding: 10px 20px; background: var(--border-color); color: black; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
+                ✨ Get AI Analysis
+            </button>
+        </div>
 
         <div class="card time-card">
             <h2>🕐 Current Time</h2>
@@ -392,10 +451,16 @@
             secretAccessKey: 'uoLLeoTZYCsdkAkTg9VLscQlZaqP5Lj8BorMMLUY'
         };
 
+        // OpenAI Configuration - Add your API key here
+        const OPENAI_API_KEY = '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';  // Replace with your OpenAI API key
+
         const MQTT_TOPIC = 'sws-data';
         let mqttClient = null;
         let historicalData = [];
         let historyChart = null;
+        let currentSensorData = {};
+        let lastAIRefresh = 0;  // Track last AI refresh time
+        const AI_COOLDOWN = 60000;  // 60 seconds cooldown between AI calls
 
         async function connectToIoT() {
             console.log('🔌 Connecting to AWS IoT...');
@@ -560,6 +625,9 @@
         function handleSensorData(data) {
             document.querySelectorAll('.loading').forEach(el => el.classList.remove('loading'));
 
+            // Store current sensor data for AI analysis
+            currentSensorData = data;
+
             if (data.tempF !== undefined) {
                 document.getElementById('current-temp').textContent = `${data.tempF}°F`;
                 updateTemperatureIcon(data.tempF);
@@ -712,6 +780,106 @@
             historyChart.data.labels = labels;
             historyChart.data.datasets[0].data = values;
             historyChart.update('none');
+        }
+
+        // AI Overview Functions
+        async function getAIOverview() {
+            if (!currentSensorData || !currentSensorData.air) {
+                return 'No air quality data available yet. Waiting for sensor readings...';
+            }
+
+            if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY_HERE') {
+                return '⚠️ OpenAI API key not configured. Please add your API key to the OPENAI_API_KEY variable in the code.';
+            }
+
+            const airQuality = currentSensorData.air || 0;
+            const temperature = currentSensorData.tempF || 0;
+            const humidity = currentSensorData.hum || 0;
+            const lightLevel = currentSensorData.light || 0;
+
+            const airStatus = classifyAirQuality(airQuality);
+            const lightStatus = classifyLight(lightLevel);
+
+            try {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o-mini',  // Cheapest model available
+                        messages: [{
+                            role: 'system',
+                            content: 'You are an air quality and environmental expert. Provide brief, helpful insights about indoor air quality and comfort.'
+                        }, {
+                            role: 'user',
+                            content: `Analyze these indoor environment readings and provide a brief overview in paragraph format (4-5 sentences):
+
+Air Quality: ${airStatus} (Raw value: ${airQuality})
+Temperature: ${temperature}°F
+Humidity: ${humidity}%
+Light Level: ${lightStatus} (Raw: ${lightLevel})
+
+Focus on:
+1. Overall air quality assessment
+2. Health implications
+3. Comfort recommendations
+4. Any immediate actions needed
+5. Add ONE sentence mentioning the main disease or health condition that could be caused by these conditions
+
+Important: Write in simple paragraph format without headers, bullet points, or markdown formatting.`
+                        }],
+                        max_tokens: 250,
+                        temperature: 0.7
+                    })
+                });
+
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        return `⚠️ Rate limit exceeded. Your OpenAI API key has too many requests or ran out of credits.\n\nSolutions:\n1. Wait a few minutes and try again\n2. Check your OpenAI account quota at https://platform.openai.com/usage\n3. Add credits to your account\n4. Increase cooldown period in code (currently 60 seconds)`;
+                    } else if (response.status === 401) {
+                        return `⚠️ Invalid API key. Please check your OpenAI API key.`;
+                    }
+                    throw new Error(`OpenAI API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                return data.choices[0].message.content;
+
+            } catch (error) {
+                console.error('AI Overview Error:', error);
+                return `❌ Error getting AI analysis: ${error.message}`;
+            }
+        }
+
+        async function refreshAIOverview() {
+            const overviewDiv = document.getElementById('ai-overview');
+
+            // Check cooldown period
+            const now = Date.now();
+            const timeSinceLastRefresh = now - lastAIRefresh;
+
+            if (timeSinceLastRefresh < AI_COOLDOWN) {
+                const secondsRemaining = Math.ceil((AI_COOLDOWN - timeSinceLastRefresh) / 1000);
+                overviewDiv.textContent = `⏳ Please wait ${secondsRemaining} seconds before refreshing again (rate limit protection)`;
+                return;
+            }
+
+            overviewDiv.textContent = '🤖 Analyzing current air quality data...';
+            overviewDiv.classList.add('loading');
+
+            const analysis = await getAIOverview();
+
+            overviewDiv.textContent = analysis;
+            overviewDiv.classList.remove('loading');
+            lastAIRefresh = now;  // Update last refresh time
+
+            // Change button text after first use
+            const button = document.getElementById('aiRefreshButton');
+            if (button) {
+                button.textContent = '🔄 Refresh AI Analysis';
+            }
         }
 
         // Initialize on load
