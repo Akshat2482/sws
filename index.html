@@ -4,7 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Weather Station </title>
+    <title>Smart Weather Station</title>
+
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#00ffff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SWS">
+    <meta name="description" content="Real-time air quality, temperature, humidity, and light monitoring">
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -14,6 +23,9 @@
 
     <!-- MQTT.js -->
     <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+
+    <!-- Voice Assistant -->
+    <script src="voice-assistant.js" defer></script>
 
     <!-- Material Symbols -->
     <link rel="stylesheet"
@@ -346,12 +358,6 @@
         }
 
         @media (max-width: 768px) {
-            .header {
-                flex-direction: column;
-                align-items: center;
-                gap: 15px;
-            }
-
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
@@ -368,10 +374,35 @@
             .chart-card {
                 grid-column: span 1;
             }
+        }
 
-            .connection-status {
-                flex-direction: row;
-            }
+        /* Voice Assistant Button */
+        .voice-assistant-container {
+            max-width: 1400px;
+            margin: 20px auto;
+            text-align: center;
+        }
+
+        .voice-button {
+            padding: 20px 40px;
+            font-size: 1.3rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, var(--border-color), #00aaff);
+            color: white;
+            border: 2px solid var(--border-color);
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0, 255, 255, 0.3);
+        }
+
+        .voice-button:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 12px 48px rgba(0, 255, 255, 0.5);
+        }
+
+        .voice-button:active {
+            transform: translateY(-2px) scale(1.02);
         }
     </style>
 </head>
@@ -426,7 +457,7 @@
     <div class="ai-time-container">
         <div class="card ai-card">
             <h2> ✦ AI Overview</h2>
-            <div id="ai-overview" class="loading" style="font-size: 1rem; line-height: 1.6; text-align: left;">
+            <div id="ai-overview" style="font-size: 1rem; line-height: 1.6; text-align: left;">
                 Click the button below to get AI analysis of the current air quality and environment data.
             </div>
             <button id="aiRefreshButton" onclick="refreshAIOverview()"
@@ -440,6 +471,13 @@
             <div id="time"></div>
             <div id="date"></div>
         </div>
+    </div>
+
+    <!-- Voice Assistant -->
+    <div class="voice-assistant-container">
+        <button id="voiceButton" class="voice-button" onclick="startVoiceCommand()">
+            🎤 Ask For results
+        </button>
     </div>
 
     <script>
@@ -814,7 +852,7 @@
                             content: 'You are an air quality and environmental expert. Provide brief, helpful insights about indoor air quality and comfort.'
                         }, {
                             role: 'user',
-                            content: `Analyze these indoor environment readings and provide a brief overview in paragraph format (4-5 sentences):
+                            content: `Analyze these indoor environment readings and provide a brief overview (3-4 sentences):
 
 Air Quality: ${airStatus} (Raw value: ${airQuality})
 Temperature: ${temperature}°F
@@ -825,12 +863,9 @@ Focus on:
 1. Overall air quality assessment
 2. Health implications
 3. Comfort recommendations
-4. Any immediate actions needed
-5. Add ONE sentence mentioning the main disease or health condition that could be caused by these conditions
-
-Important: Write in simple paragraph format without headers, bullet points, or markdown formatting.`
+4. Any immediate actions needed`
                         }],
-                        max_tokens: 250,
+                        max_tokens: 200,
                         temperature: 0.7
                     })
                 });
@@ -855,6 +890,7 @@ Important: Write in simple paragraph format without headers, bullet points, or m
 
         async function refreshAIOverview() {
             const overviewDiv = document.getElementById('ai-overview');
+            const button = document.getElementById('aiRefreshButton');
 
             // Check cooldown period
             const now = Date.now();
@@ -875,9 +911,8 @@ Important: Write in simple paragraph format without headers, bullet points, or m
             overviewDiv.classList.remove('loading');
             lastAIRefresh = now;  // Update last refresh time
 
-            // Change button text after first use
-            const button = document.getElementById('aiRefreshButton');
-            if (button) {
+            // Change button text after first analysis
+            if (button && button.textContent.includes('Get AI Analysis')) {
                 button.textContent = '🔄 Refresh AI Analysis';
             }
         }
@@ -896,6 +931,17 @@ Important: Write in simple paragraph format without headers, bullet points, or m
 
             // Auto-connect to AWS IoT
             connectToIoT();
+
+            // Register Service Worker for PWA
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then((registration) => {
+                        console.log('✅ PWA Service Worker registered:', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('❌ Service Worker registration failed:', error);
+                    });
+            }
         });
     </script>
 </body>

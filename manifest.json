@@ -1,0 +1,36 @@
+{
+  "name": "Smart Weather Station",
+  "short_name": "SWS",
+  "description": "Real-time environmental monitoring with air quality, temperature, humidity, and light sensors",
+  "start_url": "https://d2wzves04oqewj.cloudfront.net/index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#00ffff",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%23000' width='192' height='192'/%3E%3Ctext x='96' y='96' font-size='80' text-anchor='middle' dominant-baseline='middle' fill='%2300ffff'%3E🌡️%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%23000' width='192' height='192'/%3E%3Ctext x='96' y='96' font-size='80' text-anchor='middle' dominant-baseline='middle' fill='%2300ffff'%3E🌡️%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%23000' width='512' height='512'/%3E%3Ctext x='256' y='256' font-size='200' text-anchor='middle' dominant-baseline='middle' fill='%2300ffff'%3E🌡️%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%23000' width='512' height='512'/%3E%3Ctext x='256' y='256' font-size='200' text-anchor='middle' dominant-baseline='middle' fill='%2300ffff'%3E🌡️%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

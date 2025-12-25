@@ -99,15 +99,6 @@ void setup() {
     Serial.println("*** BLE mode will start (no auto-connect) ***\n");
   }
 
-  // Check if provision button is pressed (LOW = pressed)
-  // Hold button during boot to clear WiFi credentials and enter BLE mode
-  if (digitalRead(PROVISION_BUTTON_PIN) == LOW) {
-    Serial.println("\n*** PROVISION BUTTON PRESSED ***");
-    Serial.println("Entering BLE provisioning mode...");
-    wifi_manager_clear_credentials();
-    delay(2000);  // Give user time to see message
-  }
-
   wifi_manager_try_autoconnect();
   
   Serial.println("\n>>> STEP 2: After WiFi connection");
@@ -143,6 +134,29 @@ void setup() {
 }
 
 void loop() {
+  // Check for BOOT button press to reset WiFi and restart BLE
+  static unsigned long buttonPressTime = 0;
+  static bool buttonWasPressed = false;
+
+  if (digitalRead(PROVISION_BUTTON_PIN) == LOW) {
+    // Button is pressed
+    if (!buttonWasPressed) {
+      // First time detecting press
+      buttonPressTime = millis();
+      buttonWasPressed = true;
+    } else if (millis() - buttonPressTime > 2000) {
+      // Button held for 2 seconds - clear WiFi and restart
+      Serial.println("\n*** BOOT BUTTON HELD - CLEARING WIFI ***");
+      wifi_manager_clear_credentials();
+      Serial.println("Restarting ESP32 to enter BLE provisioning mode...");
+      delay(1000);
+      ESP.restart();  // Restart ESP32
+    }
+  } else {
+    // Button released
+    buttonWasPressed = false;
+  }
+
   // Check for serial commands
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
@@ -151,13 +165,16 @@ void loop() {
     if (cmd.equalsIgnoreCase("clear") || cmd.equalsIgnoreCase("reset")) {
       Serial.println("\nSerial command received: Clearing WiFi credentials");
       wifi_manager_clear_credentials();
-      Serial.println("Please restart ESP32 to enter BLE provisioning mode");
+      Serial.println("Restarting ESP32 to enter BLE provisioning mode...");
+      delay(1000);
+      ESP.restart();  // Restart ESP32
     }
     else if (cmd.equalsIgnoreCase("help")) {
       Serial.println("\n=== Available Commands ===");
-      Serial.println("clear  - Clear stored WiFi credentials");
+      Serial.println("clear  - Clear stored WiFi credentials and restart");
       Serial.println("reset  - Same as clear");
       Serial.println("help   - Show this help message");
+      Serial.println("BOOT Button - Hold for 2 seconds to clear WiFi and restart");
       Serial.println("========================\n");
     }
   }

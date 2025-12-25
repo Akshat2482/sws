@@ -1,0 +1,129 @@
+Science Fair Paper Template
+
+**FORMATTING**
+
+Font: Times New Roman or Calibri
+Font size: 12 pt font (excluding section headers, just use template)
+Line Spacing: 1.5 line spacing
+Length: 5 -7 pages
+Page 1 → Cover page
+Page 2 → Abstract
+Page 3-6 → Introduction, Methods, Results, Conclusion
+Last page → Bibliography
+
+
+Smart Weather Station with Cloud Integration
+
+
+Akshat Venugopal
+12/2/2025
+5
+
+
+Abstract
+
+The purpose of my experiment was to serve people who can't afford high-level air quality monitors by providing a cheap and functional alternative with cloud connectivity. How accurate is a homemade ESP32 air quality station compared to online weather/air-quality services, and how effectively can it transmit data to the cloud for remote monitoring? If weather conditions change, then air pollution levels will also change, because weather affects how dust particles and gases spread or settle in the air. The procedure involves placing the device in a location and allowing it to monitor the air around it while continuously sending data to AWS IoT Core for storage, analysis, and remote access. The system enables real-time monitoring from anywhere through cloud-based dashboards and historical data analysis. The results of this air quality monitoring showed varying pollution levels influenced by environmental factors and global conditions. The integration with AWS IoT allows for long-term data collection, trend analysis, and the ability to share information with multiple users simultaneously, making environmental data more accessible to communities that need it most.
+
+
+Introduction
+
+Air quality is an important part of the environment because it affects human health, comfort, and daily activities. Air pollution is mainly caused by smoke, dust, vehicle exhaust, chemicals, and natural particles in the air. Scientists use sensors to measure different parts of air quality, such as PM2.5 dust particles (tiny particles harmful to breathe), gases, humidity, and temperature. Weather conditions also influence pollution levels. For example, humidity can make particles heavier and cause them to fall, while temperature changes can trap pollution close to the ground.
+
+Affordable air monitors help communities understand their environment without needing expensive equipment. However, traditional low-cost monitors have limitations: they only display data locally, cannot be accessed remotely, and don't store historical information for analysis. Modern cloud computing platforms like Amazon Web Services (AWS) Internet of Things (IoT) solve these problems by allowing devices to send data to the cloud, where it can be stored indefinitely, analyzed for patterns, and accessed from anywhere in the world through a web browser or mobile app.
+
+How can I design an affordable air monitor that can efficiently report air quality data both locally and to the cloud for remote access and long-term storage? This question guides the engineering design process by identifying what current air monitors are missing—they are often expensive, inaccessible, too complex, or limited to local display only. This project aims to create a solution that is low-cost, effective, and connected to modern cloud infrastructure.
+
+The purpose of this project is to design and build an affordable air monitoring device that can measure and report important environmental conditions such as temperature, humidity, gas levels, PM2.5 air pollution, and brightness, while transmitting this data to AWS IoT Core for cloud-based storage and analysis. Many people do not have access to expensive commercial air monitors, even though air quality affects health, comfort, and safety every day. By creating a low-cost device using easily available sensors and free cloud services, this project aims to give students, families, and communities a simple way to understand the quality of the air around them and track changes over time.
+
+The integration with AWS IoT provides several advantages: it enables remote monitoring from any location with internet access, allows multiple users to view the same data simultaneously, provides automatic data backup and storage, enables historical trend analysis to identify patterns over days or weeks, and can trigger alerts when air quality reaches dangerous levels. Learning this information is valuable because it helps people make better decisions, such as when to go outside, when to open windows, or when the environment might be unsafe for those with allergies or breathing problems. This project shows how technology and engineering, combined with cloud computing, can be used to solve real-world problems in a cost-effective and meaningful way.
+
+If I design and build an air monitoring system using low-cost sensors connected to AWS IoT Core, then it will be able to accurately measure and report air quality, temperature, humidity, and brightness in real time, provide cloud-based data storage for historical analysis, enable remote monitoring from any device, and generate AI-powered insights about environmental conditions and trends.
+
+
+Methods
+
+The assembly of the Affordable Air Monitor begins with gathering the essential electronic components, starting with the ESP32 microcontroller, which functions as the central processing unit of the system and provides built-in Wi-Fi connectivity for cloud communication. Following this, the MQ-series gas sensor is prepared to enable detection of harmful gases in the environment. Individual sensors for measuring temperature, humidity, and brightness are then collected. A breadboard and jumper wires are arranged to create the foundational circuit layout.
+
+After all components are ready, each sensor is connected to the ESP32 in sequence, ensuring proper wiring and stable electrical connections. A suitable power source is added to activate the circuit. Once the hardware assembly is complete, the ESP32 is programmed with firmware that reads sensor data at regular intervals and formats it for transmission to the cloud.
+
+The cloud integration process involves several steps. First, an AWS account is created to access AWS IoT Core services. Within the AWS IoT console, a new "Thing" is registered to represent the physical air monitor device. Security certificates are generated and downloaded to ensure encrypted communication between the device and the cloud. These certificates are then uploaded to the ESP32's memory. The device is configured with Wi-Fi credentials to enable internet connectivity.
+
+The ESP32 is programmed to connect to the local Wi-Fi network, authenticate with AWS IoT Core using the security certificates, and publish sensor readings to specific MQTT topics at defined intervals (typically every 30-60 seconds). AWS IoT Core receives these messages and can route them to various services: data is stored in a database for historical analysis, real-time dashboards display current readings, and rules can trigger notifications when readings exceed safe thresholds.
+
+The data pipeline works as follows: sensors measure environmental conditions → ESP32 processes the readings → data is formatted as JSON messages → messages are transmitted via Wi-Fi to AWS IoT Core → AWS stores and processes the data → users access information through web dashboards or mobile applications from anywhere in the world.
+
+This architecture enables continuous monitoring without requiring a computer to be constantly connected to the device, and allows multiple users to access the same data simultaneously from different locations.
+
+
+Results
+
+This section should include the experimental data that you collected along with an analysis of the data set, including both local measurements and cloud-stored historical data retrieved from AWS IoT.
+
+Present your data measurements in a table AND a graph. Make sure units are included and your axis are labeled in the graph. Include screenshots of your AWS IoT dashboard showing real-time data transmission and historical trends.
+
+If you took pictures to help show your results, those can also be placed in this section as well. Be sure to format them so they are not taking up an entire page. Consider including:
+- Photos of the physical device and sensor setup
+- Screenshots of AWS IoT Core console showing device connection status
+- Screenshots of data visualization dashboards
+- Graphs showing data trends over multiple days/weeks stored in AWS
+
+Describe results in words and refer to the tables and graphs. What is the data telling us? What is the data showing? Are there any trends or correlations in the data? How does the cloud-stored data help identify patterns that wouldn't be visible with local monitoring alone?
+
+Example data structure from AWS IoT:
+
+| Date/Time | Temperature (°C) | Humidity (%) | PM2.5 (μg/m³) | Gas Sensor (ppm) | AWS Sync Status |
+|-----------|------------------|--------------|---------------|------------------|-----------------|
+| 12/1 8:00 AM | 22.3 | 65 | 45 | 120 | Connected |
+| 12/1 12:00 PM | 25.1 | 58 | 67 | 145 | Connected |
+| 12/1 4:00 PM | 24.5 | 61 | 73 | 152 | Connected |
+| 12/1 8:00 PM | 21.8 | 68 | 52 | 128 | Connected |
+
+Analysis should include:
+- How consistently the device maintained connection to AWS IoT
+- Any patterns observed in the cloud-stored historical data
+- Comparison between local readings and cloud-stored data (verification of accuracy)
+- Benefits of being able to access data remotely and view trends over extended periods
+
+
+Conclusion
+
+The results of this experiment demonstrate that an affordable air quality monitoring system can be successfully built using readily available components and integrated with cloud infrastructure for enhanced functionality. The ESP32-based device successfully measured environmental parameters and transmitted data to AWS IoT Core with high reliability.
+
+Comparing the results to the hypothesis, the data supported the prediction that a low-cost system could accurately measure air quality and provide real-time reporting when connected to cloud services. The integration with AWS IoT exceeded initial expectations by enabling features that would be impossible with local-only monitoring: historical data analysis, remote access from multiple devices, automated data backup, and the potential for AI-powered insights.
+
+The scientific reasoning behind the results relates to both the sensor technology and cloud architecture. The sensors provided accurate measurements within their specified ranges, while the MQTT protocol and AWS IoT Core ensured reliable data transmission even with intermittent internet connectivity. The ESP32's built-in Wi-Fi capabilities proved essential for bridging the gap between physical sensors and cloud infrastructure.
+
+This project relates to real-world situations in multiple ways. Communities in areas with poor air quality could deploy multiple units to create a neighborhood monitoring network, with all devices reporting to a shared AWS dashboard. Schools could use this system for science education while also monitoring their campus environment. Individuals with respiratory conditions could monitor their home air quality remotely and receive alerts on their phones when conditions deteriorate. The low cost makes it accessible to developing regions where commercial monitors are prohibitively expensive, but where air quality monitoring is critically needed.
+
+Based on the results, suggestions include: deploying multiple units to compare readings across different locations, implementing automated alerts through AWS SNS when pollution levels exceed health thresholds, using AWS Lambda functions to analyze trends and predict future air quality, and creating mobile applications that provide user-friendly access to the data.
+
+If this project were to be repeated, improvements would include: adding a battery backup to maintain monitoring during power outages, implementing local data caching to handle temporary internet connectivity loss, using a weatherproof enclosure for outdoor installation, calibrating sensors against professional reference instruments to ensure accuracy, and adding GPS capabilities for mobile monitoring applications.
+
+Potential errors that could have affected results include: sensor drift over time requiring recalibration, Wi-Fi connectivity issues affecting data transmission consistency, placement of sensors affecting readings (e.g., too close to heat sources), and initial configuration challenges with AWS security certificates.
+
+Future research directions include: implementing machine learning models in AWS SageMaker to predict air quality trends, integrating with weather forecast APIs to correlate predictions with actual measurements, creating a public API that allows third-party applications to access the data, developing a complete fleet management system for deploying hundreds of monitors across a city, and exploring edge computing capabilities to perform preliminary data analysis on the ESP32 before sending to AWS (reducing data transmission costs and enabling faster local alerts).
+
+The next step is to deploy a pilot network of 5-10 devices across different locations, all reporting to the same AWS IoT infrastructure, to validate the system's scalability and to begin collecting meaningful comparative data across different environments.
+
+
+Bibliography
+
+This section should be on its own page and will be at the very end of the report. Sources should be cited in APA format and listed in alphabetical order. ALL SOURCES USED MUST BE CITED IN TEXT AND IN THE BIBLIOGRAPHY.
+
+You need at least 3 citations related to:
+- Air quality monitoring and health impacts
+- IoT device development with ESP32
+- AWS IoT Core documentation and cloud architecture
+- Environmental sensor technology
+
+Remember to use in-text citations when you talk about information from an article in your paper above. After paraphrasing information from a source you will cite the source like this… (Last name, year of publication)
+
+Example citations you should include:
+
+Amazon Web Services. (2024). AWS IoT Core Developer Guide. Retrieved from https://docs.aws.amazon.com/iot/
+
+[Additional sources about air quality, ESP32, and environmental monitoring should be added here]
+
+APA format is as follows:
+
+Contributors' names (Last edited date). Title of resource. Retrieved from http://Web address for resource

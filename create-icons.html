@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create App Icons</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #000;
+            color: #fff;
+            text-align: center;
+        }
+        button {
+            background: #00ffff;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 10px;
+            border-radius: 8px;
+        }
+        button:hover {
+            background: #00cccc;
+        }
+        canvas {
+            border: 2px solid #00ffff;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌡️ Smart Weather Station - Icon Generator</h1>
+    <p>Click the buttons below to create and download your app icons!</p>
+
+    <canvas id="icon192" width="192" height="192"></canvas>
+    <canvas id="icon512" width="512" height="512"></canvas>
+
+    <br>
+    <button onclick="createIcons()">1. Create Icons</button>
+    <button onclick="downloadIcon('icon192', 'icon-192.png')">2. Download 192x192</button>
+    <button onclick="downloadIcon('icon512', 'icon-512.png')">3. Download 512x512</button>
+
+    <script>
+        function createIcons() {
+            // Create 192x192 icon
+            const canvas192 = document.getElementById('icon192');
+            const ctx192 = canvas192.getContext('2d');
+
+            // Background
+            ctx192.fillStyle = '#000000';
+            ctx192.fillRect(0, 0, 192, 192);
+
+            // Border
+            ctx192.strokeStyle = '#00ffff';
+            ctx192.lineWidth = 8;
+            ctx192.strokeRect(4, 4, 184, 184);
+
+            // Thermometer emoji
+            ctx192.font = 'bold 100px Arial';
+            ctx192.textAlign = 'center';
+            ctx192.textBaseline = 'middle';
+            ctx192.fillText('🌡️', 96, 96);
+
+            // Create 512x512 icon
+            const canvas512 = document.getElementById('icon512');
+            const ctx512 = canvas512.getContext('2d');
+
+            // Background
+            ctx512.fillStyle = '#000000';
+            ctx512.fillRect(0, 0, 512, 512);
+
+            // Border
+            ctx512.strokeStyle = '#00ffff';
+            ctx512.lineWidth = 20;
+            ctx512.strokeRect(10, 10, 492, 492);
+
+            // Thermometer emoji
+            ctx512.font = 'bold 280px Arial';
+            ctx512.textAlign = 'center';
+            ctx512.textBaseline = 'middle';
+            ctx512.fillText('🌡️', 256, 256);
+
+            alert('✅ Icons created! Now click the download buttons.');
+        }
+
+        function downloadIcon(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            alert('✅ Downloaded: ' + filename);
+        }
+
+        // Auto-create on load
+        window.onload = createIcons;
+    </script>
+</body>
+</html>
