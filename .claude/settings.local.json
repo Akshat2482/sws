@@ -51,7 +51,13 @@
       "Bash(powershell.exe -Command \"\\(Get-Item ''C:\\\\Akshat 2025\\\\sws\\\\SWS-App2\\\\app-release-signed.apk''\\).Length / 1MB\")",
       "Bash(\"C:\\\\Program Files\\\\Eclipse Adoptium\\\\jdk-17.0.17.10-hotspot\\\\bin\\\\java.exe\" -jar \"C:\\\\Users\\\\Admin\\\\.bubblewrap\\\\android_sdk\\\\build-tools\\\\34.0.0\\\\lib\\\\apksigner.jar\" verify --print-certs \"C:\\\\Akshat 2025\\\\sws\\\\SWS-App2\\\\app-release-signed.apk\")",
       "Bash(del app-release-unsigned-aligned.apk)",
-      "Bash(\"C:\\\\Users\\\\Admin\\\\.bubblewrap\\\\android_sdk\\\\build-tools\\\\34.0.0\\\\zipalign.exe\" -f -v -p 4 app-release-unsigned.apk app-release-aligned-new.apk)"
+      "Bash(\"C:\\\\Users\\\\Admin\\\\.bubblewrap\\\\android_sdk\\\\build-tools\\\\34.0.0\\\\zipalign.exe\" -f -v -p 4 app-release-unsigned.apk app-release-aligned-new.apk)",
+      "Bash(npx web-push generate-vapid-keys)",
+      "Bash(heroku --version:*)",
+      "Bash(heroku create:*)",
+      "Bash(heroku auth:whoami:*)",
+      "Bash(start node server.js)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

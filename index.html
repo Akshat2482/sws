@@ -404,15 +404,194 @@
         .voice-button:active {
             transform: translateY(-2px) scale(1.02);
         }
+
+        /* Notification Bell Button */
+        .notification-bell {
+            position: relative;
+            cursor: pointer;
+            padding: 12px;
+            border-radius: 50%;
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notification-bell:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .notification-bell .material-symbols-outlined {
+            font-size: 24px;
+            color: var(--border-color);
+        }
+
+        .notification-bell.active .material-symbols-outlined {
+            animation: bellRing 0.5s ease;
+        }
+
+        @keyframes bellRing {
+            0%, 100% { transform: rotate(0deg); }
+            10%, 30% { transform: rotate(-15deg); }
+            20%, 40% { transform: rotate(15deg); }
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: #ff3838;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 10px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .notification-badge.show {
+            display: flex;
+        }
+
+        /* Notification Settings Modal */
+        .notification-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notification-modal.show {
+            display: flex;
+        }
+
+        .notification-modal-content {
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 255, 255, 0.3);
+        }
+
+        .notification-modal h2 {
+            color: var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .threshold-setting {
+            margin: 20px 0;
+        }
+
+        .threshold-setting label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .threshold-setting input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            color: var(--text-primary);
+            font-size: 16px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 16px;
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 255, 255, 0.3);
+        }
+
+        .modal-btn.primary {
+            background: var(--border-color);
+            color: #000;
+        }
     </style>
 </head>
 
 <body>
     <div class="header">
         <h1>🌤️ Smart Weather Station</h1>
-        <div class="connection-status">
-            <div class="status-dot" id="statusDot"></div>
-            <span id="connectionText">Not Connected</span>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <div class="notification-bell" id="notificationBell" title="Configure Notifications">
+                <span class="material-symbols-outlined">notifications</span>
+                <div class="notification-badge" id="notificationBadge"></div>
+            </div>
+            <div class="connection-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="connectionText">Not Connected</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Settings Modal -->
+    <div class="notification-modal" id="notificationModal">
+        <div class="notification-modal-content">
+            <h2>🔔 Notification Settings</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Get alerted when sensor values exceed your thresholds</p>
+
+            <div id="notificationStatus" style="margin-bottom: 20px; padding: 12px; border-radius: 8px; background: rgba(0, 255, 255, 0.1);">
+                <strong>Status:</strong> <span id="notificationStatusText">Checking...</span>
+            </div>
+
+            <div class="threshold-setting">
+                <label>🌡️ Max Temperature (°F):</label>
+                <input type="number" id="maxTemp" placeholder="e.g., 80" value="80">
+            </div>
+
+            <div class="threshold-setting">
+                <label>💧 Max Humidity (%):</label>
+                <input type="number" id="maxHumidity" placeholder="e.g., 70" value="70">
+            </div>
+
+            <div class="threshold-setting">
+                <label>💨 Max Air Quality (Raw Value):</label>
+                <input type="number" id="maxAirQuality" placeholder="e.g., 1000" value="1000">
+            </div>
+
+            <div class="threshold-setting">
+                <label>💡 Min Light Level (Raw Value):</label>
+                <input type="number" id="minLight" placeholder="e.g., 100" value="100">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn" onclick="closeNotificationModal()">Cancel</button>
+                <button class="modal-btn primary" onclick="saveNotificationSettings()">Save & Enable</button>
+            </div>
         </div>
     </div>
 
@@ -491,6 +670,11 @@
 
         // OpenAI Configuration - Add your API key here
         const OPENAI_API_KEY = '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';  // Replace with your OpenAI API key
+
+        // Server Configuration - Set your deployed server URL here
+        // For local development: 'http://localhost:3000'
+        // For production: 'https://your-app-name.herokuapp.com' or your deployed server URL
+        const SERVER_URL = 'http://localhost:3000';  // CHANGE THIS TO YOUR DEPLOYED SERVER URL
 
         const MQTT_TOPIC = 'sws-data';
         let mqttClient = null;
@@ -696,6 +880,11 @@
                 document.getElementById('light-value').textContent = `Raw: ${data.light}`;
                 updateLightIcon(data.light);
                 document.getElementById('light-time').textContent = formatUpdateTime();
+            }
+
+            // Check notification thresholds
+            if (Notification.permission === 'granted') {
+                checkThresholds(data);
             }
         }
 
@@ -937,12 +1126,216 @@ Focus on:
                 navigator.serviceWorker.register('/service-worker.js')
                     .then((registration) => {
                         console.log('✅ PWA Service Worker registered:', registration.scope);
+                        // Initialize notification system
+                        initializeNotifications(registration);
                     })
                     .catch((error) => {
                         console.log('❌ Service Worker registration failed:', error);
                     });
             }
         });
+
+        // ==================== NOTIFICATION SYSTEM ====================
+
+        let notificationSubscription = null;
+        let notificationThresholds = {
+            maxTemp: 80,
+            maxHumidity: 70,
+            maxAirQuality: 1000,
+            minLight: 100
+        };
+
+        // Load saved thresholds from localStorage
+        function loadNotificationSettings() {
+            const saved = localStorage.getItem('notificationThresholds');
+            if (saved) {
+                notificationThresholds = JSON.parse(saved);
+                document.getElementById('maxTemp').value = notificationThresholds.maxTemp;
+                document.getElementById('maxHumidity').value = notificationThresholds.maxHumidity;
+                document.getElementById('maxAirQuality').value = notificationThresholds.maxAirQuality;
+                document.getElementById('minLight').value = notificationThresholds.minLight;
+            }
+        }
+
+        // Initialize notification system
+        async function initializeNotifications(registration) {
+            loadNotificationSettings();
+
+            // Check if notifications are supported
+            if (!('Notification' in window)) {
+                document.getElementById('notificationStatusText').textContent = '❌ Not supported on this device';
+                return;
+            }
+
+            // Check current permission status
+            updateNotificationStatus();
+
+            // Set up bell button click handler
+            document.getElementById('notificationBell').addEventListener('click', openNotificationModal);
+
+            // Check if already subscribed
+            registration.pushManager.getSubscription()
+                .then(subscription => {
+                    notificationSubscription = subscription;
+                    if (subscription) {
+                        console.log('✅ Already subscribed to notifications');
+                    }
+                });
+        }
+
+        // Update notification status display
+        function updateNotificationStatus() {
+            const permission = Notification.permission;
+            const statusText = document.getElementById('notificationStatusText');
+
+            if (permission === 'granted') {
+                statusText.textContent = '✅ Notifications enabled';
+                statusText.style.color = 'var(--success)';
+            } else if (permission === 'denied') {
+                statusText.textContent = '❌ Notifications blocked (check browser settings)';
+                statusText.style.color = 'var(--error)';
+            } else {
+                statusText.textContent = '⚠️ Not enabled - click "Save & Enable" to activate';
+                statusText.style.color = 'var(--text-secondary)';
+            }
+        }
+
+        // Open notification settings modal
+        function openNotificationModal() {
+            document.getElementById('notificationModal').classList.add('show');
+            updateNotificationStatus();
+        }
+
+        // Close notification settings modal
+        function closeNotificationModal() {
+            document.getElementById('notificationModal').classList.remove('show');
+        }
+
+        // Save notification settings and request permission
+        async function saveNotificationSettings() {
+            // Save thresholds
+            notificationThresholds = {
+                maxTemp: parseInt(document.getElementById('maxTemp').value),
+                maxHumidity: parseInt(document.getElementById('maxHumidity').value),
+                maxAirQuality: parseInt(document.getElementById('maxAirQuality').value),
+                minLight: parseInt(document.getElementById('minLight').value)
+            };
+            localStorage.setItem('notificationThresholds', JSON.stringify(notificationThresholds));
+
+            // Request notification permission
+            if (Notification.permission === 'default') {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    alert('❌ Notification permission denied. Please enable in browser settings.');
+                    return;
+                }
+            }
+
+            // Subscribe to push notifications
+            await subscribeToPush();
+
+            updateNotificationStatus();
+            document.getElementById('notificationBell').classList.add('active');
+            setTimeout(() => {
+                document.getElementById('notificationBell').classList.remove('active');
+            }, 500);
+
+            alert('✅ Notifications enabled! You\'ll receive alerts when thresholds are exceeded.');
+            closeNotificationModal();
+        }
+
+        // Subscribe to push notifications
+        async function subscribeToPush() {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+
+                // Fetch VAPID public key from server
+                const keyResponse = await fetch(`${SERVER_URL}/api/vapid-public-key`);
+                const keyData = await keyResponse.json();
+                const vapidPublicKey = keyData.publicKey;
+
+                if (vapidPublicKey === 'GENERATE_WITH_WEB_PUSH') {
+                    alert('⚠️ Server VAPID keys not configured. Please run: npx web-push generate-vapid-keys');
+                    return;
+                }
+
+                // Subscribe to push notifications
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+                });
+
+                notificationSubscription = subscription;
+
+                // Send subscription to backend
+                await fetch(`${SERVER_URL}/api/subscribe`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subscription: subscription,
+                        thresholds: notificationThresholds
+                    })
+                });
+
+                console.log('✅ Subscribed to push notifications:', subscription);
+            } catch (error) {
+                console.error('❌ Failed to subscribe to push notifications:', error);
+                alert(`❌ Failed to subscribe to notifications. Make sure the server is running on ${SERVER_URL}`);
+            }
+        }
+
+        // Helper function to convert VAPID key
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding)
+                .replace(/\-/g, '+')
+                .replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        // Check thresholds when new data arrives (call this in handleSensorData)
+        function checkThresholds(data) {
+            const alerts = [];
+
+            if (data.tempF > notificationThresholds.maxTemp) {
+                alerts.push(`🌡️ Temperature is high: ${data.tempF}°F (threshold: ${notificationThresholds.maxTemp}°F)`);
+            }
+            if (data.hum > notificationThresholds.maxHumidity) {
+                alerts.push(`💧 Humidity is high: ${data.hum}% (threshold: ${notificationThresholds.maxHumidity}%)`);
+            }
+            if (data.air > notificationThresholds.maxAirQuality) {
+                alerts.push(`💨 Air quality is poor: ${data.air} (threshold: ${notificationThresholds.maxAirQuality})`);
+            }
+            if (data.light < notificationThresholds.minLight) {
+                alerts.push(`💡 Light level is low: ${data.light} (threshold: ${notificationThresholds.minLight})`);
+            }
+
+            // Send alerts to backend if any
+            if (alerts.length > 0 && notificationSubscription) {
+                sendAlertToBackend(alerts);
+            }
+        }
+
+        // Send alert to backend to trigger push notification
+        async function sendAlertToBackend(alerts) {
+            try {
+                await fetch(`${SERVER_URL}/api/notify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subscription: notificationSubscription,
+                        alerts: alerts
+                    })
+                });
+            } catch (error) {
+                console.error('Failed to send alert:', error);
+            }
+        }
     </script>
 </body>
 

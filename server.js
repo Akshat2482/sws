@@ -1,12 +1,12 @@
 /**
- * AWS IoT WebSocket Proxy Server
- * 
+ * AWS IoT WebSocket Proxy Server with Push Notifications
+ *
  * This server acts as a bridge between the web dashboard and AWS IoT Core.
- * It handles authentication and forwards MQTT messages via WebSocket.
- * 
+ * It handles authentication, forwards MQTT messages via WebSocket, and sends push notifications.
+ *
  * Setup:
- * 1. npm install express ws aws-iot-device-sdk dotenv cors
- * 2. Create .env file with AWS credentials
+ * 1. npm install express ws aws-iot-device-sdk dotenv cors web-push
+ * 2. Create .env file with AWS credentials and VAPID keys
  * 3. Run: node server.js
  */
 
@@ -15,6 +15,8 @@ const WebSocket = require('ws');
 const awsIot = require('aws-iot-device-sdk');
 const cors = require('cors');
 const path = require('path');
+const webpush = require('web-push');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -75,9 +77,13 @@ function initializeAwsIot() {
 
         awsIotDevice.on('message', (topic, payload) => {
             console.log('📨 Message received:', topic, payload.toString());
-            
+
             try {
                 const data = JSON.parse(payload.toString());
+
+                // Check sensor thresholds and send notifications
+                checkSensorThresholds(data);
+
                 // Broadcast to all connected web clients
                 broadcastToClients({
                     type: 'sensor-data',
@@ -224,4 +230,206 @@ app.get('/api/status', (req, res) => {
         }
     });
 });
+
+// ==================== PUSH NOTIFICATION SYSTEM ====================
+
+// Configure VAPID details for web push
+// Generate keys with: npx web-push generate-vapid-keys
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'GENERATE_WITH_WEB_PUSH';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'GENERATE_WITH_WEB_PUSH';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:your-email@example.com';
+
+if (VAPID_PUBLIC_KEY !== 'GENERATE_WITH_WEB_PUSH') {
+    webpush.setVapidDetails(
+        VAPID_SUBJECT,
+        VAPID_PUBLIC_KEY,
+        VAPID_PRIVATE_KEY
+    );
+    console.log('✅ VAPID keys configured for push notifications');
+} else {
+    console.log('⚠️  VAPID keys not configured. Run: npx web-push generate-vapid-keys');
+}
+
+// Store push subscriptions (in production, use a database)
+let pushSubscriptions = new Map(); // Map<subscriptionEndpoint, {subscription, thresholds, lastAlert}>
+
+// Storage file for subscriptions
+const SUBSCRIPTIONS_FILE = './push-subscriptions.json';
+
+// Load subscriptions from file
+function loadSubscriptions() {
+    try {
+        if (fs.existsSync(SUBSCRIPTIONS_FILE)) {
+            const data = fs.readFileSync(SUBSCRIPTIONS_FILE, 'utf8');
+            const subscriptions = JSON.parse(data);
+            pushSubscriptions = new Map(Object.entries(subscriptions));
+            console.log(`✅ Loaded ${pushSubscriptions.size} push subscriptions`);
+        }
+    } catch (error) {
+        console.error('Error loading subscriptions:', error);
+    }
+}
+
+// Save subscriptions to file
+function saveSubscriptions() {
+    try {
+        const subscriptions = Object.fromEntries(pushSubscriptions);
+        fs.writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(subscriptions, null, 2));
+    } catch (error) {
+        console.error('Error saving subscriptions:', error);
+    }
+}
+
+// Load subscriptions on startup
+loadSubscriptions();
+
+// API endpoint to get VAPID public key
+app.get('/api/vapid-public-key', (req, res) => {
+    res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// API endpoint to subscribe to push notifications
+app.post('/api/subscribe', (req, res) => {
+    const { subscription, thresholds } = req.body;
+
+    if (!subscription || !subscription.endpoint) {
+        return res.status(400).json({ error: 'Invalid subscription' });
+    }
+
+    // Store subscription with thresholds
+    pushSubscriptions.set(subscription.endpoint, {
+        subscription,
+        thresholds: thresholds || { maxTemp: 80, maxHumidity: 70, maxAirQuality: 1000, minLight: 100 },
+        lastAlert: {}
+    });
+
+    saveSubscriptions();
+
+    console.log(`✅ New push subscription registered (total: ${pushSubscriptions.size})`);
+
+    res.json({
+        success: true,
+        message: 'Successfully subscribed to push notifications'
+    });
+});
+
+// API endpoint to unsubscribe from push notifications
+app.post('/api/unsubscribe', (req, res) => {
+    const { endpoint } = req.body;
+
+    if (pushSubscriptions.has(endpoint)) {
+        pushSubscriptions.delete(endpoint);
+        saveSubscriptions();
+        console.log(`Unsubscribed: ${endpoint}`);
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ error: 'Subscription not found' });
+    }
+});
+
+// API endpoint to manually send a notification (for testing)
+app.post('/api/notify', async (req, res) => {
+    const { subscription, alerts } = req.body;
+
+    if (!subscription) {
+        return res.status(400).json({ error: 'No subscription provided' });
+    }
+
+    const payload = JSON.stringify({
+        title: 'Smart Weather Station Alert',
+        body: alerts.join('\n'),
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: 'sws-alert',
+        critical: true
+    });
+
+    try {
+        await webpush.sendNotification(subscription, payload);
+        console.log('✅ Push notification sent');
+        res.json({ success: true, message: 'Notification sent' });
+    } catch (error) {
+        console.error('❌ Error sending notification:', error);
+
+        // If subscription is invalid, remove it
+        if (error.statusCode === 404 || error.statusCode === 410) {
+            pushSubscriptions.delete(subscription.endpoint);
+            saveSubscriptions();
+        }
+
+        res.status(500).json({ error: 'Failed to send notification' });
+    }
+});
+
+// Check sensor data against thresholds and send alerts
+function checkSensorThresholds(sensorData) {
+    if (pushSubscriptions.size === 0) return;
+
+    pushSubscriptions.forEach((subData, endpoint) => {
+        const { subscription, thresholds, lastAlert } = subData;
+        const alerts = [];
+
+        // Check temperature
+        if (sensorData.tempF > thresholds.maxTemp) {
+            if (!lastAlert.temp || Date.now() - lastAlert.temp > 300000) { // 5 min cooldown
+                alerts.push(`🌡️ High temperature: ${sensorData.tempF}°F (limit: ${thresholds.maxTemp}°F)`);
+                lastAlert.temp = Date.now();
+            }
+        }
+
+        // Check humidity
+        if (sensorData.hum > thresholds.maxHumidity) {
+            if (!lastAlert.hum || Date.now() - lastAlert.hum > 300000) {
+                alerts.push(`💧 High humidity: ${sensorData.hum}% (limit: ${thresholds.maxHumidity}%)`);
+                lastAlert.hum = Date.now();
+            }
+        }
+
+        // Check air quality
+        if (sensorData.air > thresholds.maxAirQuality) {
+            if (!lastAlert.air || Date.now() - lastAlert.air > 300000) {
+                alerts.push(`💨 Poor air quality: ${sensorData.air} (limit: ${thresholds.maxAirQuality})`);
+                lastAlert.air = Date.now();
+            }
+        }
+
+        // Check light level
+        if (sensorData.light < thresholds.minLight) {
+            if (!lastAlert.light || Date.now() - lastAlert.light > 300000) {
+                alerts.push(`💡 Low light: ${sensorData.light} (limit: ${thresholds.minLight})`);
+                lastAlert.light = Date.now();
+            }
+        }
+
+        // Send notification if there are alerts
+        if (alerts.length > 0) {
+            const payload = JSON.stringify({
+                title: 'Smart Weather Station Alert',
+                body: alerts.join('\n'),
+                icon: '/icon-192.png',
+                badge: '/icon-192.png',
+                tag: 'sws-alert-' + Date.now(),
+                critical: true,
+                vibrate: [200, 100, 200]
+            });
+
+            webpush.sendNotification(subscription, payload)
+                .then(() => {
+                    console.log(`✅ Alert sent to ${endpoint.substring(0, 50)}...`);
+                })
+                .catch(error => {
+                    console.error('❌ Failed to send notification:', error.message);
+
+                    // Remove invalid subscriptions
+                    if (error.statusCode === 404 || error.statusCode === 410) {
+                        pushSubscriptions.delete(endpoint);
+                        saveSubscriptions();
+                    }
+                });
+        }
+    });
+}
+
+console.log('\n🔔 Push Notification System Ready');
+console.log(`📊 Active subscriptions: ${pushSubscriptions.size}\n`);
 

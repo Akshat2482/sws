@@ -34,3 +34,11 @@ build/
 tmp/
 temp/
 
+# Push notification subscriptions (regenerated)
+push-subscriptions.json
+
+# Android build files
+SWS-App2/
+*.apk
+*.idsig
+
