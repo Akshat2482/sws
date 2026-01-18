@@ -57,7 +57,10 @@
       "Bash(heroku create:*)",
       "Bash(heroku auth:whoami:*)",
       "Bash(start node server.js)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(del \"C:\\\\Akshat 2025\\\\sws\\\\ar-placement-helper.html\")",
+      "Bash(powershell.exe -Command \"Remove-Item -Path ''C:\\\\Akshat 2025\\\\sws\\\\ar-placement-helper.html'' -Force\")",
+      "Bash(xargs basename:*)"
     ],
     "deny": [],
     "ask": []
