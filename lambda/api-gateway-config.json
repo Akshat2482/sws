@@ -1,0 +1,64 @@
+{
+  "apiName": "SmartWeatherStationAPI",
+  "description": "API for Smart Weather Station push notification management",
+  "protocol": "HTTP",
+  "corsConfiguration": {
+    "allowOrigins": ["*"],
+    "allowMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allowHeaders": ["Content-Type", "Authorization"],
+    "maxAge": 300
+  },
+  "routes": [
+    {
+      "path": "/api/vapid-public-key",
+      "method": "GET",
+      "integration": {
+        "type": "AWS_PROXY",
+        "function": "SubscriptionAPIFunction"
+      },
+      "description": "Get VAPID public key for push subscription"
+    },
+    {
+      "path": "/api/subscribe",
+      "method": "POST",
+      "integration": {
+        "type": "AWS_PROXY",
+        "function": "SubscriptionAPIFunction"
+      },
+      "description": "Subscribe to push notifications"
+    },
+    {
+      "path": "/api/unsubscribe",
+      "method": "POST",
+      "integration": {
+        "type": "AWS_PROXY",
+        "function": "SubscriptionAPIFunction"
+      },
+      "description": "Unsubscribe from push notifications"
+    },
+    {
+      "path": "/api/subscriptions",
+      "method": "GET",
+      "integration": {
+        "type": "AWS_PROXY",
+        "function": "SubscriptionAPIFunction"
+      },
+      "description": "Get subscription details"
+    }
+  ],
+  "stages": [
+    {
+      "stageName": "prod",
+      "description": "Production stage",
+      "throttlingBurstLimit": 100,
+      "throttlingRateLimit": 50
+    }
+  ],
+  "setup": {
+    "step1": "Create HTTP API in API Gateway Console",
+    "step2": "Add routes as listed above",
+    "step3": "Integrate each route with SubscriptionAPIFunction Lambda",
+    "step4": "Deploy to 'prod' stage",
+    "step5": "Get API endpoint URL and update dashboard"
+  }
+}

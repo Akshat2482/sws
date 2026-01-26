@@ -1,0 +1,84 @@
+{
+  "rules": [
+    {
+      "ruleName": "EmergencyTemperatureAlert",
+      "description": "Triggers Lambda for emergency calling when temperature >= 100°F",
+      "sql": "SELECT * FROM 'sws-data' WHERE tempF >= 100",
+      "actions": [
+        {
+          "lambda": {
+            "functionArn": "arn:aws:lambda:REGION:ACCOUNT_ID:function:EmergencyCallingFunction"
+          }
+        }
+      ],
+      "ruleDisabled": false,
+      "awsIotSqlVersion": "2016-03-23",
+      "priority": "CRITICAL"
+    },
+    {
+      "ruleName": "HighTemperatureAlert",
+      "description": "Triggers push notification for high temperature (threshold based)",
+      "sql": "SELECT *, 'temp' AS alertType FROM 'sws-data' WHERE tempF >= 70",
+      "actions": [
+        {
+          "lambda": {
+            "functionArn": "arn:aws:lambda:REGION:ACCOUNT_ID:function:PushNotificationFunction"
+          }
+        }
+      ],
+      "ruleDisabled": false,
+      "awsIotSqlVersion": "2016-03-23",
+      "priority": "NORMAL"
+    },
+    {
+      "ruleName": "HighHumidityAlert",
+      "description": "Triggers push notification for high humidity (threshold based)",
+      "sql": "SELECT *, 'hum' AS alertType FROM 'sws-data' WHERE hum >= 60",
+      "actions": [
+        {
+          "lambda": {
+            "functionArn": "arn:aws:lambda:REGION:ACCOUNT_ID:function:PushNotificationFunction"
+          }
+        }
+      ],
+      "ruleDisabled": false,
+      "awsIotSqlVersion": "2016-03-23",
+      "priority": "NORMAL"
+    },
+    {
+      "ruleName": "PoorAirQualityAlert",
+      "description": "Triggers push notification for poor air quality (threshold based)",
+      "sql": "SELECT *, 'air' AS alertType FROM 'sws-data' WHERE air >= 800",
+      "actions": [
+        {
+          "lambda": {
+            "functionArn": "arn:aws:lambda:REGION:ACCOUNT_ID:function:PushNotificationFunction"
+          }
+        }
+      ],
+      "ruleDisabled": false,
+      "awsIotSqlVersion": "2016-03-23",
+      "priority": "NORMAL"
+    },
+    {
+      "ruleName": "LowLightAlert",
+      "description": "Triggers push notification for low light (threshold based)",
+      "sql": "SELECT *, 'light' AS alertType FROM 'sws-data' WHERE light <= 200",
+      "actions": [
+        {
+          "lambda": {
+            "functionArn": "arn:aws:lambda:REGION:ACCOUNT_ID:function:PushNotificationFunction"
+          }
+        }
+      ],
+      "ruleDisabled": false,
+      "awsIotSqlVersion": "2016-03-23",
+      "priority": "NORMAL"
+    }
+  ],
+  "notes": {
+    "setup": "Replace REGION and ACCOUNT_ID with your AWS region and account ID",
+    "thresholds": "IoT Rules have base thresholds, but per-user thresholds are checked in Lambda",
+    "priority": "CRITICAL rules trigger emergency calls, NORMAL rules trigger push notifications"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "emergency-calling-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for emergency calling via Twilio",
+  "main": "emergency-calling-lambda.js",
+  "scripts": {
+    "package": "zip -r emergency-calling-lambda.zip emergency-calling-lambda.js node_modules/"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1693.0",
+    "twilio": "^5.12.0",
+    "web-push": "^3.6.7"
+  },
+  "author": "",
+  "license": "MIT"
+}

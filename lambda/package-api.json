@@ -1,0 +1,14 @@
+{
+  "name": "subscription-api-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for subscription management API",
+  "main": "subscription-api-lambda.js",
+  "scripts": {
+    "package": "zip -r subscription-api-lambda.zip subscription-api-lambda.js node_modules/"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1691.0"
+  },
+  "author": "",
+  "license": "MIT"
+}

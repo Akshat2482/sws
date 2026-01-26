@@ -1,0 +1,27 @@
+{
+  "TableName": "PushSubscriptions",
+  "Description": "Stores push notification subscriptions for Smart Weather Station",
+  "AttributeDefinitions": [
+    {
+      "AttributeName": "endpoint",
+      "AttributeType": "S"
+    }
+  ],
+  "KeySchema": [
+    {
+      "AttributeName": "endpoint",
+      "KeyType": "HASH"
+    }
+  ],
+  "BillingMode": "PAY_PER_REQUEST",
+  "Tags": [
+    {
+      "Key": "Project",
+      "Value": "SmartWeatherStation"
+    },
+    {
+      "Key": "Purpose",
+      "Value": "PushNotifications"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "endpoint": "https://fcm.googleapis.com/fcm/send/example123...",
+  "subscription": {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/example123...",
+    "expirationTime": null,
+    "keys": {
+      "p256dh": "BN7MsZXjhC4eEBGhWnXcPGUwJJqUbUnQMSQRMlUAZlg7ZylRLp...",
+      "auth": "t83SJ46lIxmR_Deb4Ts1GA"
+    }
+  },
+  "thresholds": {
+    "maxTemp": 80,
+    "maxHumidity": 70,
+    "maxAirQuality": 1000,
+    "minLight": 100
+  },
+  "lastAlert": {
+    "temp": null,
+    "hum": null,
+    "air": null,
+    "light": null
+  },
+  "subscribedAt": "2026-01-24T20:00:00Z",
+  "lastUpdated": "2026-01-24T20:00:00Z"
+}

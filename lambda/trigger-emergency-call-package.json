@@ -1,0 +1,13 @@
+{
+  "name": "trigger-emergency-call-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda - Browser-initiated emergency call trigger",
+  "main": "trigger-emergency-call.js",
+  "dependencies": {
+    "aws-sdk": "^2.1600.0",
+    "twilio": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20.x"
+  }
+}

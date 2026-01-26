@@ -1,0 +1,15 @@
+{
+  "name": "push-notification-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for push notifications",
+  "main": "push-notification-lambda.js",
+  "scripts": {
+    "package": "zip -r push-notification-lambda.zip push-notification-lambda.js node_modules/"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1691.0",
+    "web-push": "^3.6.7"
+  },
+  "author": "",
+  "license": "MIT"
+}

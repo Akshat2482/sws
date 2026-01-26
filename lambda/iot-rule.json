@@ -1,0 +1,14 @@
+{
+  "ruleName": "EmergencyTemperatureAlert",
+  "description": "Triggers Lambda when temperature >= 100°F for emergency calling",
+  "sql": "SELECT * FROM 'sws-data' WHERE tempF >= 100",
+  "actions": [
+    {
+      "lambda": {
+        "functionArn": "arn:aws:lambda:us-east-1:YOUR_ACCOUNT_ID:function:EmergencyCallingFunction"
+      }
+    }
+  ],
+  "ruleDisabled": false,
+  "awsIotSqlVersion": "2016-03-23"
+}

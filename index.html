@@ -429,6 +429,16 @@
             color: var(--border-color);
         }
 
+        /* Fire emoji styling to match notification bell */
+        .notification-bell#emergencySettings {
+            font-size: 28px;
+            line-height: 1;
+            width: 52px;
+            height: 52px;
+            min-width: 52px;
+            min-height: 52px;
+        }
+
         .notification-bell.active .material-symbols-outlined {
             animation: bellRing 0.5s ease;
         }
@@ -547,6 +557,9 @@
     <div class="header">
         <h1>🌤️ Smart Weather Station</h1>
         <div style="display: flex; align-items: center; gap: 20px;">
+            <div class="notification-bell" id="emergencySettings" title="Emergency Call Settings" style="margin-right: 0;">
+                🔥
+            </div>
             <div class="notification-bell" id="notificationBell" title="Configure Notifications">
                 <span class="material-symbols-outlined">notifications</span>
                 <div class="notification-badge" id="notificationBadge"></div>
@@ -554,6 +567,38 @@
             <div class="connection-status">
                 <div class="status-dot" id="statusDot"></div>
                 <span id="connectionText">Not Connected</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Emergency Call Settings Modal -->
+    <div class="notification-modal" id="emergencyModal">
+        <div class="notification-modal-content">
+            <h2>🚨 Emergency Call Settings</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Configure temperature threshold for automatic emergency calls</p>
+
+            <div style="margin-bottom: 20px; padding: 12px; border-radius: 8px; background: rgba(255, 99, 132, 0.1); border-left: 4px solid rgba(255, 99, 132, 1);">
+                <strong>📞 Emergency Contact:</strong> <span id="emergencyContactDisplay">Akshat (+18016967235)</span>
+            </div>
+
+            <div class="threshold-setting">
+                <label>🔥 Emergency Temperature Threshold (°F):</label>
+                <input type="number" id="emergencyTempThreshold" placeholder="e.g., 100" value="100" min="50" max="150">
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 8px;">
+                    📝 Recommended: 85°F for demo, 100°F for production
+                </p>
+            </div>
+
+            <div style="margin-top: 20px; padding: 12px; border-radius: 8px; background: rgba(0, 255, 255, 0.1);">
+                <p style="font-size: 0.9rem; color: var(--text-secondary);">
+                    ⚠️ <strong>Note:</strong> After changing the threshold, you need to update your AWS Lambda function with the new value.
+                    Current threshold in Lambda: <strong id="lambdaThresholdDisplay">Loading...</strong>
+                </p>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn" onclick="closeEmergencyModal()">Cancel</button>
+                <button class="modal-btn primary" onclick="saveEmergencySettings()">Save Settings</button>
             </div>
         </div>
     </div>
@@ -652,6 +697,11 @@
         </div>
     </div>
 
+    <!-- Temperature & Humidity History Chart -->
+    <div class="card chart-card" style="margin: 20px auto 0 auto; padding: 30px; max-width: 1400px;">
+        <canvas id="historyChart"></canvas>
+    </div>
+
     <!-- Voice Assistant -->
     <div class="voice-assistant-container">
         <button id="voiceButton" class="voice-button" onclick="startVoiceCommand()">
@@ -673,8 +723,8 @@
 
         // Server Configuration - Set your deployed server URL here
         // For local development: 'http://localhost:3000'
-        // For production: 'https://your-app-name.herokuapp.com' or your deployed server URL
-        const SERVER_URL = 'http://localhost:3000';  // CHANGE THIS TO YOUR DEPLOYED SERVER URL
+        // For production: AWS API Gateway URL (us-east-1)
+        const SERVER_URL = 'https://zanv3ubwz5.execute-api.us-east-1.amazonaws.com/prod';  // AWS API Gateway us-east-1
 
         const MQTT_TOPIC = 'sws-data';
         let mqttClient = null;
@@ -683,6 +733,199 @@
         let currentSensorData = {};
         let lastAIRefresh = 0;  // Track last AI refresh time
         const AI_COOLDOWN = 60000;  // 60 seconds cooldown between AI calls
+
+        // IndexedDB for Temperature & Humidity History
+        let db = null;
+        const DB_NAME = 'SensorDataDB';
+        const STORE_NAME = 'sensorHistory';
+        const DATA_RETENTION_DAYS = 2; // Keep only 2 days of data
+        const SAVE_INTERVAL_MS = 1 * 60 * 1000; // Save to IndexedDB every 1 minute
+        const CHART_UPDATE_INTERVAL_MS = 5 * 60 * 1000; // Add chart point every 5 minutes
+        let lastSaveTime = 0; // Track last IndexedDB save timestamp
+        let lastChartUpdateTime = 0; // Track last chart update timestamp
+
+        // Emergency Call Tracking
+        let lastEmergencyCallTime = 0; // Track last emergency call timestamp
+        const EMERGENCY_CALL_COOLDOWN = 0; // No cooldown - immediate calls allowed
+
+        // Initialize IndexedDB
+        async function initIndexedDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 2); // Version 2 for temp/humidity tracking
+
+                request.onerror = () => {
+                    console.error('❌ IndexedDB failed to open');
+                    reject(request.error);
+                };
+
+                request.onsuccess = () => {
+                    db = request.result;
+                    console.log('✅ IndexedDB opened successfully');
+                    resolve(db);
+                };
+
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+
+                    // Delete old store if it exists (migration from air quality to temp/humidity)
+                    if (db.objectStoreNames.contains('airQualityHistory')) {
+                        db.deleteObjectStore('airQualityHistory');
+                        console.log('🗑️ Deleted old airQualityHistory store');
+                    }
+
+                    // Create new object store for temperature & humidity data
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'timestamp' });
+                        objectStore.createIndex('date', 'date', { unique: false });
+                        console.log('✅ IndexedDB store created for temp/humidity');
+                    }
+                };
+            });
+        }
+
+        // Save temperature & humidity data to IndexedDB (every 30 minutes)
+        async function saveSensorData(tempF, humidity) {
+            if (!db) return;
+
+            // Check if 30 minutes have passed since last save
+            const now = Date.now();
+            if (now - lastSaveTime < SAVE_INTERVAL_MS) {
+                return; // Skip saving, too soon
+            }
+
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+
+            const data = {
+                timestamp: now,
+                date: new Date().toISOString(),
+                temperature: tempF,
+                humidity: humidity
+            };
+
+            store.add(data);
+
+            transaction.oncomplete = () => {
+                lastSaveTime = now; // Update last save time
+                console.log(`💾 Sensor data saved to IndexedDB (Temp: ${tempF}°F, Hum: ${humidity}%)`);
+                cleanOldData(); // Remove data older than 7 days
+            };
+
+            transaction.onerror = () => {
+                console.error('❌ Failed to save to IndexedDB');
+            };
+        }
+
+        // Check emergency temperature threshold and trigger call if needed
+        async function checkEmergencyThreshold(temperature) {
+            // Get threshold from localStorage (default 100°F)
+            const threshold = parseInt(localStorage.getItem('emergencyTempThreshold') || '100');
+
+            // Check if temperature exceeds threshold
+            if (temperature < threshold) {
+                return; // Temperature is safe
+            }
+
+            // Check cooldown period (15 minutes)
+            const now = Date.now();
+            const timeSinceLastCall = now - lastEmergencyCallTime;
+
+            if (timeSinceLastCall < EMERGENCY_CALL_COOLDOWN) {
+                const minutesRemaining = Math.ceil((EMERGENCY_CALL_COOLDOWN - timeSinceLastCall) / 60000);
+                console.log(`⏳ Emergency call in cooldown (${minutesRemaining} minutes remaining)`);
+                return;
+            }
+
+            // Temperature exceeds threshold and cooldown has passed - trigger emergency call!
+            console.log(`🚨 EMERGENCY! Temperature ${temperature}°F exceeds threshold ${threshold}°F`);
+
+            try {
+                const response = await fetch(`${SERVER_URL}/api/emergency-call`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        temperature: temperature,
+                        reason: `High temperature detected: ${temperature}°F (threshold: ${threshold}°F)`
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    lastEmergencyCallTime = now; // Update cooldown timestamp
+                    console.log(`✅ Emergency call triggered successfully:`, result);
+
+                    // Show notification to user
+                    if (Notification.permission === 'granted') {
+                        new Notification('🚨 Emergency Call Triggered!', {
+                            body: `Temperature ${temperature}°F exceeded threshold ${threshold}°F. Emergency contacts have been called.`,
+                            icon: '/icon-192.png',
+                            tag: 'emergency-call'
+                        });
+                    }
+
+                    // Visual alert on page
+                    alert(`🚨 EMERGENCY CALL TRIGGERED!\n\nTemperature: ${temperature}°F\nThreshold: ${threshold}°F\n\nEmergency contacts have been called.`);
+                } else {
+                    console.error('❌ Emergency call API error:', result);
+                }
+            } catch (error) {
+                console.error('❌ Failed to trigger emergency call:', error);
+            }
+        }
+
+        // Load historical air quality data from IndexedDB
+        async function loadHistoricalData() {
+            if (!db) return [];
+
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.getAll();
+
+                request.onsuccess = () => {
+                    const data = request.result || [];
+                    console.log(`📊 Loaded ${data.length} historical records from IndexedDB`);
+                    resolve(data);
+                };
+
+                request.onerror = () => {
+                    console.error('❌ Failed to load from IndexedDB');
+                    reject(request.error);
+                };
+            });
+        }
+
+        // Clean data older than retention period (auto-delete records older than 2 days)
+        async function cleanOldData() {
+            if (!db) return;
+
+            const cutoffTime = Date.now() - (DATA_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const index = store.index('date');
+            const request = index.openCursor();
+            let deletedCount = 0;
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    if (cursor.value.timestamp < cutoffTime) {
+                        cursor.delete();
+                        deletedCount++;
+                    }
+                    cursor.continue();
+                }
+            };
+
+            transaction.oncomplete = () => {
+                if (deletedCount > 0) {
+                    console.log(`🗑️ Deleted ${deletedCount} old record(s) (older than ${DATA_RETENTION_DAYS} days)`);
+                }
+            };
+        }
 
         async function connectToIoT() {
             console.log('🔌 Connecting to AWS IoT...');
@@ -854,6 +1097,9 @@
                 document.getElementById('current-temp').textContent = `${data.tempF}°F`;
                 updateTemperatureIcon(data.tempF);
                 document.getElementById('temp-time').textContent = formatUpdateTime();
+
+                // Check emergency temperature threshold
+                checkEmergencyThreshold(data.tempF);
             }
 
             if (data.hum !== undefined) {
@@ -862,16 +1108,33 @@
                 document.getElementById('humidity-time').textContent = formatUpdateTime();
             }
 
+            // Save temperature & humidity data
+            if (data.tempF !== undefined && data.hum !== undefined) {
+                const now = Date.now();
+
+                // Save to IndexedDB every 30 minutes
+                saveSensorData(data.tempF, data.hum);
+
+                // Add to chart every 5 minutes
+                if (now - lastChartUpdateTime >= CHART_UPDATE_INTERVAL_MS || lastChartUpdateTime === 0) {
+                    historicalData.push({
+                        date: new Date(),
+                        temperature: data.tempF,
+                        humidity: data.hum
+                    });
+                    if (historicalData.length > 288) historicalData.shift(); // Keep last 288 points (24 hours at 5-min intervals)
+                    lastChartUpdateTime = now;
+                    updateHistoryChart();
+                    console.log(`📊 Chart updated with new data point (Temp: ${data.tempF}°F, Hum: ${data.hum}%)`);
+                }
+            }
+
             if (data.air !== undefined) {
                 const status = data.airStatus || classifyAirQuality(data.air);
                 document.getElementById('air-quality-status').textContent = status;
                 document.getElementById('air-quality-value').textContent = `Raw: ${data.air}`;
                 updateCO2Icon(data.air);
                 document.getElementById('air-time').textContent = formatUpdateTime();
-
-                historicalData.push({ date: new Date(), value: data.air });
-                if (historicalData.length > 20) historicalData.shift();
-                // updateHistoryChart();
             }
 
             if (data.light !== undefined) {
@@ -956,44 +1219,127 @@
                 }</span>`;
         }
 
-        function initializeChart() {
+        async function initializeChart() {
             const ctx = document.getElementById('historyChart').getContext('2d');
             historyChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: [],
-                    datasets: [{
-                        label: 'Air Quality',
-                        data: [],
-                        borderColor: 'rgba(0, 255, 255, 1)',
-                        backgroundColor: 'rgba(0, 255, 255, 0.1)',
-                        borderWidth: 3,
-                        tension: 0.4,
-                        fill: true,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointBackgroundColor: 'rgba(0, 255, 255, 1)'
-                    }]
+                    datasets: [
+                        {
+                            label: '🌡️ Temperature (°F)',
+                            data: [],
+                            borderColor: 'rgba(255, 99, 132, 1)', // Red
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 2,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: '💧 Humidity (%)',
+                            data: [],
+                            borderColor: 'rgba(54, 162, 235, 1)', // Blue
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 2,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                            yAxisID: 'y1'
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
                     plugins: {
-                        legend: { display: false }
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#aaa',
+                                font: { size: 12 },
+                                usePointStyle: true
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: '📊 Temperature & Humidity History (5-min intervals)',
+                            color: '#00ffff',
+                            font: { size: 16, weight: 'bold' }
+                        }
                     },
                     scales: {
                         y: {
-                            beginAtZero: true,
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Temperature (°F)',
+                                color: 'rgba(255, 99, 132, 1)'
+                            },
                             grid: { color: 'rgba(0, 255, 255, 0.1)' },
-                            ticks: { color: '#aaa', font: { size: 11 } }
+                            ticks: { color: 'rgba(255, 99, 132, 1)', font: { size: 11 } }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Humidity (%)',
+                                color: 'rgba(54, 162, 235, 1)'
+                            },
+                            grid: { drawOnChartArea: false }, // Don't draw grid lines for this axis
+                            ticks: { color: 'rgba(54, 162, 235, 1)', font: { size: 11 } }
                         },
                         x: {
+                            title: {
+                                display: true,
+                                text: 'Time',
+                                color: '#aaa'
+                            },
                             grid: { color: 'rgba(0, 255, 255, 0.1)' },
-                            ticks: { color: '#aaa', font: { size: 11 }, maxRotation: 45, minRotation: 45 }
+                            ticks: { color: '#aaa', font: { size: 10 }, maxRotation: 45, minRotation: 45 }
                         }
                     }
                 }
             });
+
+            // Load historical data from IndexedDB
+            await loadHistoricalDataToChart();
+        }
+
+        // Load IndexedDB data into the chart
+        async function loadHistoricalDataToChart() {
+            try {
+                const dbData = await loadHistoricalData();
+
+                // Filter to last 24 hours
+                const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+                const recentData = dbData.filter(d => d.timestamp > oneDayAgo);
+
+                // Convert to chart format and populate historicalData array
+                historicalData = recentData.map(d => ({
+                    date: new Date(d.timestamp),
+                    temperature: d.temperature,
+                    humidity: d.humidity
+                }));
+
+                console.log(`📊 Loaded ${historicalData.length} data points for chart (5-min intervals, max 2 days)`);
+                updateHistoryChart();
+            } catch (error) {
+                console.error('❌ Failed to load historical data to chart:', error);
+            }
         }
 
         function updateHistoryChart() {
@@ -1002,10 +1348,12 @@
             const labels = historicalData.map(d =>
                 d.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             );
-            const values = historicalData.map(d => d.value);
+            const tempValues = historicalData.map(d => d.temperature);
+            const humValues = historicalData.map(d => d.humidity);
 
             historyChart.data.labels = labels;
-            historyChart.data.datasets[0].data = values;
+            historyChart.data.datasets[0].data = tempValues; // Temperature line
+            historyChart.data.datasets[1].data = humValues;  // Humidity line
             historyChart.update('none');
         }
 
@@ -1107,8 +1455,16 @@ Focus on:
         }
 
         // Initialize on load
-        document.addEventListener('DOMContentLoaded', () => {
-            // initializeChart();
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize IndexedDB for air quality history
+            try {
+                await initIndexedDB();
+                await initializeChart();
+                console.log('✅ Air quality tracking initialized');
+            } catch (error) {
+                console.error('❌ Failed to initialize IndexedDB/Chart:', error);
+            }
+
             updateTime();
             setInterval(updateTime, 1000);
 
@@ -1121,6 +1477,11 @@ Focus on:
             // Auto-connect to AWS IoT
             connectToIoT();
 
+            // Set up notification and emergency settings button handlers (always available)
+            document.getElementById('notificationBell').addEventListener('click', openNotificationModal);
+            document.getElementById('emergencySettings').addEventListener('click', openEmergencyModal);
+            loadEmergencySettings();
+
             // Register Service Worker for PWA
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('/service-worker.js')
@@ -1132,6 +1493,9 @@ Focus on:
                     .catch((error) => {
                         console.log('❌ Service Worker registration failed:', error);
                     });
+            } else {
+                // Service worker not supported, but still allow settings
+                updateNotificationStatus();
             }
         });
 
@@ -1170,9 +1534,6 @@ Focus on:
             // Check current permission status
             updateNotificationStatus();
 
-            // Set up bell button click handler
-            document.getElementById('notificationBell').addEventListener('click', openNotificationModal);
-
             // Check if already subscribed
             registration.pushManager.getSubscription()
                 .then(subscription => {
@@ -1209,6 +1570,50 @@ Focus on:
         // Close notification settings modal
         function closeNotificationModal() {
             document.getElementById('notificationModal').classList.remove('show');
+        }
+
+        // Emergency Call Settings Functions
+        function openEmergencyModal() {
+            document.getElementById('emergencyModal').classList.add('show');
+            loadEmergencySettings();
+        }
+
+        function closeEmergencyModal() {
+            document.getElementById('emergencyModal').classList.remove('show');
+        }
+
+        function loadEmergencySettings() {
+            // Load from localStorage
+            const savedThreshold = localStorage.getItem('emergencyTempThreshold');
+            const threshold = savedThreshold ? parseInt(savedThreshold) : 85;
+
+            // Update input field
+            const input = document.getElementById('emergencyTempThreshold');
+            if (input) {
+                input.value = threshold;
+            }
+
+            // Update display
+            const display = document.getElementById('lambdaThresholdDisplay');
+            if (display) {
+                display.textContent = `${threshold}°F (saved in browser)`;
+            }
+
+            console.log(`🚨 Emergency threshold loaded: ${threshold}°F`);
+        }
+
+        function saveEmergencySettings() {
+            const threshold = parseInt(document.getElementById('emergencyTempThreshold').value);
+
+            if (isNaN(threshold) || threshold < 50 || threshold > 150) {
+                alert('⚠️ Please enter a valid temperature between 50°F and 150°F');
+                return;
+            }
+
+            // Save to localStorage
+            localStorage.setItem('emergencyTempThreshold', threshold);
+
+            closeEmergencyModal();
         }
 
         // Save notification settings and request permission
@@ -1322,7 +1727,11 @@ Focus on:
         }
 
         // Send alert to backend to trigger push notification
+        // NOTE: This is no longer needed! Push notifications are handled automatically
+        // by AWS IoT Rules -> Lambda when ESP32 sends data to IoT Core
         async function sendAlertToBackend(alerts) {
+            // Commented out - notifications now handled by AWS IoT Rules automatically
+            /*
             try {
                 await fetch(`${SERVER_URL}/api/notify`, {
                     method: 'POST',
@@ -1335,6 +1744,7 @@ Focus on:
             } catch (error) {
                 console.error('Failed to send alert:', error);
             }
+            */
         }
     </script>
 </body>

@@ -17,6 +17,7 @@ const cors = require('cors');
 const path = require('path');
 const webpush = require('web-push');
 const fs = require('fs');
+const TwilioVoiceService = require('./twilio-service');
 require('dotenv').config();
 
 const app = express();
@@ -283,6 +284,21 @@ function saveSubscriptions() {
 // Load subscriptions on startup
 loadSubscriptions();
 
+// ==================== EMERGENCY CALLING SYSTEM ====================
+
+// Initialize Twilio Voice Service
+let twilioService = null;
+if (process.env.ENABLE_EMERGENCY_CALLS === 'true') {
+    twilioService = new TwilioVoiceService();
+    if (twilioService.isReady()) {
+        console.log('✅ Emergency Calling Service Ready');
+    } else {
+        console.log('⚠️  Emergency calling disabled - Configure Twilio credentials in .env');
+    }
+} else {
+    console.log('ℹ️  Emergency calling feature is disabled (set ENABLE_EMERGENCY_CALLS=true to enable)');
+}
+
 // API endpoint to get VAPID public key
 app.get('/api/vapid-public-key', (req, res) => {
     res.json({ publicKey: VAPID_PUBLIC_KEY });
@@ -361,12 +377,313 @@ app.post('/api/notify', async (req, res) => {
     }
 });
 
+// ==================== EMERGENCY CONTACT MANAGEMENT API ====================
+
+// Add emergency contact
+app.post('/api/emergency-contacts', (req, res) => {
+    const { endpoint, contact } = req.body;
+
+    if (!endpoint || !contact) {
+        return res.status(400).json({ error: 'Missing endpoint or contact data' });
+    }
+
+    // Validate phone number (E.164 format: +1234567890)
+    if (!contact.phone || !contact.phone.match(/^\+[1-9]\d{1,14}$/)) {
+        return res.status(400).json({
+            error: 'Invalid phone number format. Use E.164 format (e.g., +1234567890)'
+        });
+    }
+
+    if (!pushSubscriptions.has(endpoint)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    const subData = pushSubscriptions.get(endpoint);
+
+    // Initialize emergencyContacts array if it doesn't exist
+    if (!subData.emergencyContacts) {
+        subData.emergencyContacts = [];
+    }
+
+    // Limit to 5 contacts
+    if (subData.emergencyContacts.length >= 5) {
+        return res.status(400).json({ error: 'Maximum 5 emergency contacts allowed' });
+    }
+
+    // Create new contact
+    const newContact = {
+        id: 'contact-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+        name: contact.name || 'Emergency Contact',
+        phone: contact.phone,
+        priority: subData.emergencyContacts.length + 1,
+        enabled: true,
+        addedAt: new Date().toISOString()
+    };
+
+    subData.emergencyContacts.push(newContact);
+    saveSubscriptions();
+
+    console.log(`✅ Emergency contact added: ${newContact.name} (${newContact.phone})`);
+
+    res.json({
+        success: true,
+        contact: newContact,
+        message: 'Emergency contact added successfully'
+    });
+});
+
+// Get emergency contacts for a subscription
+app.get('/api/emergency-contacts/:endpoint', (req, res) => {
+    const endpoint = decodeURIComponent(req.params.endpoint);
+
+    if (!pushSubscriptions.has(endpoint)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    const subData = pushSubscriptions.get(endpoint);
+
+    res.json({
+        contacts: subData.emergencyContacts || [],
+        lastEmergencyCall: subData.lastEmergencyCall || null
+    });
+});
+
+// Update emergency contact
+app.put('/api/emergency-contacts/:contactId', (req, res) => {
+    const { contactId } = req.params;
+    const { endpoint, updates } = req.body;
+
+    if (!endpoint) {
+        return res.status(400).json({ error: 'Missing endpoint' });
+    }
+
+    if (!pushSubscriptions.has(endpoint)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    const subData = pushSubscriptions.get(endpoint);
+    const contact = subData.emergencyContacts?.find(c => c.id === contactId);
+
+    if (!contact) {
+        return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    // Update allowed fields
+    if (updates.name) contact.name = updates.name;
+    if (updates.phone) {
+        if (!updates.phone.match(/^\+[1-9]\d{1,14}$/)) {
+            return res.status(400).json({ error: 'Invalid phone number format' });
+        }
+        contact.phone = updates.phone;
+    }
+    if (typeof updates.enabled === 'boolean') contact.enabled = updates.enabled;
+    if (typeof updates.priority === 'number') contact.priority = updates.priority;
+
+    saveSubscriptions();
+
+    console.log(`✅ Emergency contact updated: ${contact.name}`);
+
+    res.json({
+        success: true,
+        contact,
+        message: 'Emergency contact updated successfully'
+    });
+});
+
+// Delete emergency contact
+app.delete('/api/emergency-contacts/:contactId', (req, res) => {
+    const { contactId } = req.params;
+    const { endpoint } = req.body;
+
+    if (!endpoint) {
+        return res.status(400).json({ error: 'Missing endpoint' });
+    }
+
+    if (!pushSubscriptions.has(endpoint)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    const subData = pushSubscriptions.get(endpoint);
+    const initialLength = subData.emergencyContacts?.length || 0;
+
+    subData.emergencyContacts = subData.emergencyContacts?.filter(c => c.id !== contactId) || [];
+
+    if (subData.emergencyContacts.length === initialLength) {
+        return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    // Reorder priorities
+    subData.emergencyContacts.forEach((contact, index) => {
+        contact.priority = index + 1;
+    });
+
+    saveSubscriptions();
+
+    console.log(`✅ Emergency contact deleted`);
+
+    res.json({
+        success: true,
+        message: 'Emergency contact deleted successfully'
+    });
+});
+
+// Test emergency call (manual trigger)
+app.post('/api/test-emergency-call', async (req, res) => {
+    const { endpoint, contactId } = req.body;
+
+    if (!twilioService) {
+        return res.status(503).json({ error: 'Emergency call service not configured' });
+    }
+
+    if (!endpoint) {
+        return res.status(400).json({ error: 'Missing endpoint' });
+    }
+
+    if (!pushSubscriptions.has(endpoint)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    const subData = pushSubscriptions.get(endpoint);
+    const contact = subData.emergencyContacts?.find(c => c.id === contactId);
+
+    if (!contact) {
+        return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    try {
+        // Create test sensor data (high temperature)
+        const testData = {
+            tempF: 105,
+            hum: 50,
+            air: 0,
+            light: 2000,
+            timestamp: new Date().toISOString()
+        };
+
+        console.log(`📞 Test call initiated to ${contact.name} (${contact.phone})`);
+
+        const call = await twilioService.makeEmergencyCall(contact.phone, testData.tempF);
+
+        res.json({
+            success: true,
+            message: 'Test emergency call initiated',
+            callSid: call.sid,
+            status: call.status,
+            mock: call.mock || false,
+            contact: {
+                name: contact.name,
+                phone: contact.phone
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Test call failed:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Twilio webhook - Call status updates
+app.post('/api/twilio/call-status', (req, res) => {
+    const { CallSid, CallStatus, To, From } = req.body;
+
+    console.log(`📞 Twilio Call Status Update:`);
+    console.log(`   Call SID: ${CallSid}`);
+    console.log(`   Status: ${CallStatus}`);
+    console.log(`   From: ${From} → To: ${To}`);
+
+    // You can add logic here to update call history in a database if needed
+
+    res.sendStatus(200);
+});
+
+// Make emergency calls to all enabled contacts
+async function makeEmergencyCalls(contacts, sensorData) {
+    const results = [];
+
+    // Filter to only enabled contacts
+    const enabledContacts = contacts.filter(c => c.enabled);
+
+    if (enabledContacts.length === 0) {
+        console.log('⚠️  No enabled emergency contacts to call');
+        return results;
+    }
+
+    console.log(`📞 Calling ${enabledContacts.length} emergency contact(s)...`);
+
+    // Call ALL enabled contacts (simplified approach for beginners)
+    for (const contact of enabledContacts) {
+        try {
+            const call = await twilioService.makeEmergencyCall(
+                contact.phone,
+                sensorData.tempF
+            );
+
+            results.push({
+                contactId: contact.id,
+                name: contact.name,
+                callSid: call.sid,
+                status: 'calling',
+                mock: call.mock || false
+            });
+
+            console.log(`✅ Called ${contact.name} at ${contact.phone}`);
+
+        } catch (error) {
+            console.error(`❌ Failed to call ${contact.name}:`, error.message);
+            results.push({
+                contactId: contact.id,
+                name: contact.name,
+                error: error.message
+            });
+        }
+    }
+
+    return results;
+}
+
 // Check sensor data against thresholds and send alerts
-function checkSensorThresholds(sensorData) {
+async function checkSensorThresholds(sensorData) {
     if (pushSubscriptions.size === 0) return;
 
-    pushSubscriptions.forEach((subData, endpoint) => {
-        const { subscription, thresholds, lastAlert } = subData;
+    pushSubscriptions.forEach(async (subData, endpoint) => {
+        const { subscription, thresholds, lastAlert, emergencyContacts, lastEmergencyCall } = subData;
+
+        // ==================== EMERGENCY CALL LOGIC (NEW) ====================
+        // Check for HIGH TEMPERATURE emergency (100°F or higher)
+        const isEmergency = sensorData.tempF >= 100;
+
+        if (isEmergency && emergencyContacts && emergencyContacts.length > 0 && twilioService) {
+            // Check 15-minute cooldown (900,000 milliseconds)
+            const cooldownPeriod = 15 * 60 * 1000; // 15 minutes
+            const canCall = !lastEmergencyCall || (Date.now() - lastEmergencyCall) > cooldownPeriod;
+
+            if (canCall) {
+                console.log(`\n🚨 HIGH TEMPERATURE EMERGENCY DETECTED! 🚨`);
+                console.log(`   Temperature: ${sensorData.tempF}°F (Threshold: 100°F)`);
+                console.log(`   Initiating emergency calls...`);
+
+                try {
+                    // Make emergency calls to all enabled contacts
+                    const callResults = await makeEmergencyCalls(emergencyContacts, sensorData);
+
+                    // Update last emergency call timestamp
+                    subData.lastEmergencyCall = Date.now();
+                    saveSubscriptions();
+
+                    console.log(`   Emergency call results:`, callResults);
+                    console.log(`   Next emergency call allowed in 15 minutes\n`);
+
+                } catch (error) {
+                    console.error(`❌ Error making emergency calls:`, error);
+                }
+            } else {
+                // Still in cooldown period
+                const minutesLeft = Math.round((cooldownPeriod - (Date.now() - lastEmergencyCall)) / 60000);
+                console.log(`⏱️  Emergency cooldown active: ${minutesLeft} minute(s) remaining`);
+            }
+        }
+
+        // ==================== NORMAL ALERT LOGIC (EXISTING) ====================
         const alerts = [];
 
         // Check temperature
