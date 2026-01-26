@@ -394,6 +394,9 @@
             max-width: 1400px;
             margin: 0 auto;
             text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
         .voice-button {
@@ -570,7 +573,12 @@
     <div class="header">
         <h1>🌤️ Smart Weather Station</h1>
         <div style="display: flex; align-items: center; gap: 20px;">
-            <div class="notification-bell" id="emergencySettings" title="Emergency Call Settings" style="margin-right: 0;">
+            <div class="voice-assistant-container">
+        <button id="voiceButton" class="voice-button" onclick="startVoiceCommand()">
+            🎤 Ask For results
+        </button>
+    </div>
+        <div class="notification-bell" id="emergencySettings" title="Emergency Call Settings" style="margin-right: 0;">
                 🔥
             </div>
             <div class="notification-bell" id="notificationBell" title="Configure Notifications">
@@ -715,11 +723,11 @@
     </div>
 
     <!-- Voice Assistant -->
-    <div class="voice-assistant-container">
+    <!--  <div class="voice-assistant-container">
         <button id="voiceButton" class="voice-button" onclick="startVoiceCommand()">
             🎤 Ask For results
         </button>
-    </div>
+    </div>  -->
 
     <script>
         // AWS Configuration - Hardcoded for student project
