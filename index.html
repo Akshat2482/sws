@@ -30,6 +30,9 @@
     <!-- Health Predictor -->
     <script src="health-predictor.js" defer></script>
 
+    <!-- System Diagnostics -->
+    <script src="system-diagnostics.js" defer></script>
+
     <!-- Material Symbols -->
     <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
@@ -903,6 +906,9 @@
         <div class="notification-bell" id="aiAnalysisIcon" title="AI Analysis" style="margin-right: 0;">
                 ✨
             </div>
+        <div class="notification-bell" id="diagnosticsIcon" title="System Diagnostics" style="margin-right: 0;">
+                🔧
+            </div>
         <div class="notification-bell" id="emergencySettings" title="Emergency Call Settings" style="margin-right: 0;">
                 🔥
             </div>
@@ -957,6 +963,39 @@
             <div class="modal-buttons">
                 <button class="modal-btn" onclick="closeEmergencyModal()">Cancel</button>
                 <button class="modal-btn primary" onclick="saveEmergencySettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Diagnostics Modal -->
+    <div class="notification-modal" id="diagnosticsModal">
+        <div class="notification-modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h2>🔧 System Diagnostics</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Comprehensive health check for your Smart Weather Station</p>
+
+            <!-- Overall Status Banner -->
+            <div id="diagnosticsOverallStatus" style="display: none; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; border: 2px solid;">
+                <div style="font-size: 3rem; margin-bottom: 10px;" id="diagnosticsStatusIcon">🔧</div>
+                <div style="font-size: 1.3rem; font-weight: bold; margin-bottom: 5px;" id="diagnosticsStatusText">Running Tests...</div>
+                <div style="font-size: 0.9rem; color: var(--text-secondary);" id="diagnosticsStatusDetails">Please wait...</div>
+            </div>
+
+            <!-- Test Results Container -->
+            <div id="diagnosticsResults" style="display: none;">
+                <!-- Results will be injected here -->
+            </div>
+
+            <!-- Loading State -->
+            <div id="diagnosticsLoading" style="text-align: center; padding: 40px;">
+                <div style="font-size: 3rem; margin-bottom: 15px;">🔧</div>
+                <div style="font-size: 1.2rem; margin-bottom: 10px;">Ready to Run Diagnostics</div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem;">Click the button below to start comprehensive system tests</div>
+            </div>
+
+            <div class="modal-buttons" style="margin-top: 20px;">
+                <button class="modal-btn" onclick="closeDiagnosticsModal()">Close</button>
+                <button class="modal-btn primary" id="runDiagnosticsBtn" onclick="runSystemDiagnostics()">🔧 Run Diagnostics</button>
+                <button class="modal-btn" id="downloadDiagnosticsBtn" onclick="downloadDiagnosticsReport()" style="display: none;">📥 Download Report</button>
             </div>
         </div>
     </div>
@@ -2102,6 +2141,7 @@ Focus on:
             }
 
             document.getElementById('notificationBell').addEventListener('click', openNotificationModal);
+            document.getElementById('diagnosticsIcon').addEventListener('click', openDiagnosticsModal);
             document.getElementById('emergencySettings').addEventListener('click', openEmergencyModal);
             loadEmergencySettings();
 
@@ -2212,6 +2252,197 @@ Focus on:
 
         function closeAIModal() {
             document.getElementById('aiModal').classList.remove('show');
+        }
+
+        // System Diagnostics Functions
+        let systemDiagnostics = null;
+        let lastDiagnosticsReport = null;
+
+        function openDiagnosticsModal() {
+            document.getElementById('diagnosticsModal').classList.add('show');
+            // Initialize diagnostics if not already done
+            if (!systemDiagnostics) {
+                systemDiagnostics = new SystemDiagnostics();
+            }
+        }
+
+        function closeDiagnosticsModal() {
+            document.getElementById('diagnosticsModal').classList.remove('show');
+        }
+
+        async function runSystemDiagnostics() {
+            console.log('🔧 Running system diagnostics...');
+
+            // Show loading state
+            document.getElementById('diagnosticsLoading').style.display = 'none';
+            document.getElementById('diagnosticsResults').style.display = 'none';
+            document.getElementById('diagnosticsOverallStatus').style.display = 'block';
+            document.getElementById('downloadDiagnosticsBtn').style.display = 'none';
+
+            // Update status to running
+            document.getElementById('diagnosticsStatusIcon').textContent = '⏳';
+            document.getElementById('diagnosticsStatusText').textContent = 'Running Tests...';
+            document.getElementById('diagnosticsStatusDetails').textContent = 'Checking sensors on the dashboard...';
+
+            // Disable button
+            const runBtn = document.getElementById('runDiagnosticsBtn');
+            runBtn.disabled = true;
+            runBtn.textContent = '⏳ Running...';
+
+            try {
+                // Initialize diagnostics
+                if (!systemDiagnostics) {
+                    systemDiagnostics = new SystemDiagnostics();
+                    console.log('✅ SystemDiagnostics initialized');
+                }
+
+                // Add small delay so user sees the spinner
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Run diagnostics
+                console.log('🔍 Running diagnostic tests...');
+                const report = await systemDiagnostics.runFullDiagnostics();
+                console.log('📊 Diagnostic report:', report);
+
+                lastDiagnosticsReport = report;
+
+                // Another small delay for smooth transition
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                // Display results
+                console.log('🎨 Displaying results...');
+                displayDiagnosticsReport(report);
+
+                // Re-enable button
+                runBtn.disabled = false;
+                runBtn.textContent = '🔄 Run Again';
+
+                // Show download button
+                document.getElementById('downloadDiagnosticsBtn').style.display = 'inline-block';
+
+                console.log('✅ Diagnostics complete!');
+
+            } catch (error) {
+                console.error('❌ Diagnostics failed:', error);
+                console.error('Error stack:', error.stack);
+
+                document.getElementById('diagnosticsStatusIcon').textContent = '❌';
+                document.getElementById('diagnosticsStatusText').textContent = 'Test Failed';
+                document.getElementById('diagnosticsStatusDetails').textContent = 'Error: ' + error.message;
+
+                runBtn.disabled = false;
+                runBtn.textContent = '🔄 Try Again';
+            }
+        }
+
+        function displayDiagnosticsReport(report) {
+            // Update overall status
+            const statusBanner = document.getElementById('diagnosticsOverallStatus');
+            const statusIcon = document.getElementById('diagnosticsStatusIcon');
+            const statusText = document.getElementById('diagnosticsStatusText');
+            const statusDetails = document.getElementById('diagnosticsStatusDetails');
+
+            let overallColor, overallIcon, overallText;
+
+            if (report.overall === 'pass') {
+                overallColor = 'var(--success)';
+                overallIcon = '✅';
+                overallText = 'All Systems Operational';
+            } else if (report.overall === 'warning') {
+                overallColor = '#ffa500';
+                overallIcon = '⚠️';
+                overallText = 'Minor Issues Detected';
+            } else {
+                overallColor = 'var(--error)';
+                overallIcon = '❌';
+                overallText = 'Critical Issues Found';
+            }
+
+            statusBanner.style.borderColor = overallColor;
+            statusBanner.style.background = `${overallColor}22`;
+            statusIcon.textContent = overallIcon;
+            statusText.textContent = overallText;
+            statusText.style.color = overallColor;
+            statusDetails.textContent = `${report.summary.pass}/${report.summary.total} tests passed • ${report.summary.duration}s`;
+
+            // Build results HTML
+            let resultsHTML = '<div style="display: flex; flex-direction: column; gap: 15px;">';
+
+            report.tests.forEach((test, index) => {
+                let statusColor, statusIcon, statusLabel;
+
+                if (test.status === 'pass') {
+                    statusColor = 'var(--success)';
+                    statusIcon = '✅';
+                    statusLabel = 'PASSED';
+                } else if (test.status === 'warning') {
+                    statusColor = '#ffa500';
+                    statusIcon = '⚠️';
+                    statusLabel = 'WARNING';
+                } else {
+                    statusColor = 'var(--error)';
+                    statusIcon = '❌';
+                    statusLabel = 'FAILED';
+                }
+
+                resultsHTML += `
+                    <div style="background: rgba(0, 20, 40, 0.6); border: 2px solid ${statusColor}; border-radius: 12px; padding: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.5rem;">${statusIcon}</span>
+                                <span style="font-size: 1.1rem; font-weight: bold;">${test.name}</span>
+                            </div>
+                            <span style="color: ${statusColor}; font-weight: bold; font-size: 0.9rem;">${statusLabel}</span>
+                        </div>
+                `;
+
+                // Show details
+                if (test.details.length > 0) {
+                    resultsHTML += '<div style="margin-bottom: 10px; padding-left: 35px;">';
+                    test.details.forEach(detail => {
+                        resultsHTML += `<div style="color: var(--text-secondary); font-size: 0.85rem; margin: 3px 0;">• ${detail}</div>`;
+                    });
+                    resultsHTML += '</div>';
+                }
+
+                // Show issues
+                if (test.issues.length > 0) {
+                    resultsHTML += '<div style="background: rgba(255, 0, 0, 0.1); padding: 10px; border-radius: 8px; margin-top: 8px; padding-left: 35px;">';
+                    test.issues.forEach(issue => {
+                        resultsHTML += `<div style="color: ${statusColor}; font-size: 0.85rem; margin: 3px 0;">⚠ ${issue}</div>`;
+                    });
+                    resultsHTML += '</div>';
+                }
+
+                resultsHTML += '</div>';
+            });
+
+            resultsHTML += '</div>';
+
+            // Display results
+            const resultsContainer = document.getElementById('diagnosticsResults');
+            resultsContainer.innerHTML = resultsHTML;
+            resultsContainer.style.display = 'block';
+        }
+
+        function downloadDiagnosticsReport() {
+            if (!lastDiagnosticsReport || !systemDiagnostics) {
+                alert('⚠️ No diagnostic report available. Please run diagnostics first.');
+                return;
+            }
+
+            const { filename, content } = systemDiagnostics.generateDownloadableReport(lastDiagnosticsReport);
+
+            // Create download
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            console.log(`📥 Downloaded diagnostic report: ${filename}`);
         }
 
         function loadEmergencySettings() {

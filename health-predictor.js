@@ -215,16 +215,30 @@ class HealthPredictor {
         let issues = [];
 
         // Optimal sleep: 60-67°F
-        if (tempF < 60) {
-            sleepScore -= 20;
-            issues.push('Too cold for optimal sleep');
-        } else if (tempF > 67 && tempF <= 72) {
-            sleepScore -= 10;
-            issues.push('Slightly warm');
-        } else if (tempF > 72) {
-            sleepScore -= 30;
-            issues.push('Too warm - sleep disruption likely');
-        }
+       if (tempF < 55) {
+    sleepScore -= 30;
+    issues.push('Very cold – may cause discomfort and wake-ups');
+} 
+else if (tempF >= 55 && tempF < 60) {
+    sleepScore -= 15;
+    issues.push('Slightly cold for optimal sleep');
+} 
+else if (tempF >= 60 && tempF <= 67) {
+    // Optimal range — no penalty
+} 
+else if (tempF > 67 && tempF <= 70) {
+    sleepScore -= 10;
+    issues.push('Slightly warm');
+} 
+else if (tempF > 70 && tempF <= 75) {
+    sleepScore -= 25;
+    issues.push('Too warm – reduced sleep quality likely');
+} 
+else if (tempF > 75) {
+    sleepScore -= 40;
+    issues.push('Very warm – high chance of sleep disruption');
+}
+
 
         // Optimal humidity: 30-50%
         if (humidity < 30) {
